@@ -44,8 +44,30 @@ export function isFilled(slot, v) {
   return filledCell(v);
 }
 
+const norm = (v) => String(v ?? '').trim().toLowerCase();
+
+/**
+ * Is a conditional section currently being asked? Sections without a `when`, and
+ * ones whose condition names a question the template does not define, always are.
+ */
+export function isAsked(section, answers) {
+  const w = section.when;
+  if (!w || w.missing || !w.slot) return true;
+  const v = getValue(answers, w.section, w.slot);
+  if (w.op === 'answered') return isFilled(w.slot, v);
+  if (w.op === 'includes') return w.values.some((x) => !!(v && typeof v === 'object' && v[x]));
+  const cur = norm(choiceText(v));
+  const hit = w.values.some((x) => norm(x) === cur);
+  return w.op === 'isnot' ? !hit : hit;
+}
+
+/** The sections actually asked for these answers, in template order. */
+export function askedSections(tpl, answers) {
+  return tpl.sections.filter((s) => isAsked(s, answers));
+}
+
 export function progress(tpl, answers) {
-  return tpl.sections.map((s) => {
+  return askedSections(tpl, answers).map((s) => {
     const total = s.slots.length;
     const done = s.slots.filter((sl) => isFilled(sl, getValue(answers, s, sl))).length;
     return { key: s.key, total, done };

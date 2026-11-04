@@ -1,7 +1,7 @@
 ---
 title: Project Data Needs Statement
-description: Capture what a project team needs and why, in their own words, as the input to a requirement specification.
-order: 1
+description: Superseded by the Need Capture Questionnaire, which follows the Part 1 workflow and Part 3 questionnaire. Kept so questionnaires started before the change still open.
+hidden: true
 ---
 
 # Project Data Needs Statement

@@ -12,6 +12,8 @@
 //   [P0-P3]                      -> single choice P0, P1, P2, P3
 //   [Date] or [YYYY-MM-DD]       -> date picker
 //   [a, b, c, d, or e]           -> free text with clickable suggestions
+//   {#C1} before a label         -> that question's answer key is C1 (marker is not shown)
+//   > Show when: C0 includes data -> the section is only asked when the condition holds
 // Everything else (paragraphs, quotes, lists, tables without prompts) is shown as guidance.
 
 import { parseFrontMatter, parseBlocks, plain } from './markdown.js';
@@ -21,6 +23,29 @@ const hasPh = (s) => /\[[^\]]+\](?!\()/.test(String(s));
 const phText = (s) => plain(String(s).replace(PH_RE, '$1'));
 const ID_RE = /^([A-Za-z][A-Za-z0-9]*-)(\d+)$/;
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// `{#C1}` pins a question's answer key, so conditions and downstream consumers can
+// name it by its own identifier instead of a slug of its (re-wordable) label.
+const KEY_MARK = /\{#([A-Za-z][\w-]*)\}\s*/;
+const markedKey = (s) => (String(s).match(KEY_MARK) || [])[1] || null;
+export const stripKey = (s) => String(s ?? '').replace(KEY_MARK, '');
+
+const WHEN_RE = /^\s*(?:\*\*)?Show when:?(?:\*\*)?\s*(.+)$/is;
+
+/** `C0 includes data` / `C9 is yes` / `C9 is not no` / `D1 is answered` */
+function parseWhen(text) {
+  const src = plain(String(text).replace(/`/g, '')).trim().replace(/\.$/, '');
+  let m = src.match(/^(\S+)\s+includes\s+(.+)$/i);
+  if (m) return { ref: m[1], op: 'includes', values: splitValues(m[2]), src };
+  m = src.match(/^(\S+)\s+is\s+answered$/i);
+  if (m) return { ref: m[1], op: 'answered', values: [], src };
+  m = src.match(/^(\S+)\s+is\s+not\s+(.+)$/i);
+  if (m) return { ref: m[1], op: 'isnot', values: splitValues(m[2]), src };
+  m = src.match(/^(\S+)\s+is\s+(.+)$/i);
+  if (m) return { ref: m[1], op: 'is', values: splitValues(m[2]), src };
+  return null;
+}
+const splitValues = (s) => s.split(/\s*(?:,|\bor\b)\s*/i).map((x) => x.trim()).filter(Boolean);
 
 export function slug(s) {
   return plain(s).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'item';
@@ -72,11 +97,11 @@ export function buildTemplate(src, { id, path } = {}) {
   let sub = null;
   const newSection = (title) => {
     const used = new Set();
-    section = { key: uniqueKey(slug(title), tpl._sectionKeys ||= new Set()), title: plain(title), items: [], slots: [], _used: used };
+    section = { key: uniqueKey(slug(stripKey(title)), tpl._sectionKeys ||= new Set()), title: plain(stripKey(title)), items: [], slots: [], _used: used, when: null };
     tpl.sections.push(section);
     sub = null;
   };
-  const key = (label) => uniqueKey(slug(label), section._used);
+  const key = (label) => uniqueKey(markedKey(label) || slug(stripKey(label)), section._used);
 
   let seenH1 = false;
   for (const b of blocks) {
@@ -91,7 +116,12 @@ export function buildTemplate(src, { id, path } = {}) {
       tpl.intro.push(b);
       continue;
     }
-    if (b.type === 'heading') { sub = plain(b.text); section.items.push({ type: 'subheading', level: b.level, text: b.text }); continue; }
+    if (b.type === 'quote') { // `> Show when: …` is a directive, not guidance
+      const wm = b.text.match(WHEN_RE);
+      const w = wm && parseWhen(wm[1]);
+      if (w) { section.when = w; continue; }
+    }
+    if (b.type === 'heading') { sub = b.text; section.items.push({ type: 'subheading', level: b.level, text: stripKey(b.text) }); continue; }
     section.items.push(...toItems(b, section, sub, key));
   }
 
@@ -102,7 +132,25 @@ export function buildTemplate(src, { id, path } = {}) {
   for (const s of tpl.sections) delete s._used;
   delete tpl._sectionKeys;
   if (!tpl.title) tpl.title = tpl.id;
+  resolveConditions(tpl);
   return tpl;
+}
+
+/**
+ * Point each section's `when` at the slot it tests, and record which slots any
+ * condition depends on, so the form knows when a change can alter what is asked.
+ */
+function resolveConditions(tpl) {
+  const byKey = new Map();
+  for (const s of tpl.sections) for (const sl of s.slots) if (!byKey.has(sl.key)) byKey.set(sl.key, { section: s, slot: sl });
+  tpl.conditionDeps = new Set();
+  for (const s of tpl.sections) {
+    if (!s.when) continue;
+    const target = byKey.get(s.when.ref);
+    if (!target) { s.when = { ...s.when, missing: true }; continue; } // unknown ref: never hide
+    s.when = { ...s.when, section: target.section, slot: target.slot };
+    tpl.conditionDeps.add(target.slot.key);
+  }
 }
 
 function uniqueKey(base, used) {
@@ -122,9 +170,10 @@ function toItems(b, section, sub, key) {
   }
   if (b.type === 'list') {
     if (b.items.every((it) => it.task)) {
-      const item = { type: 'checklist', key: key(sub || section.title + ' checklist'), label: sub || '', options: [] };
+      // The sub-heading above it already states the question, so no duplicate legend.
+      const item = { type: 'checklist', key: key(sub || section.title + ' checklist'), label: '', options: [] };
       const used = new Set();
-      item.options = b.items.map((it) => ({ key: uniqueKey(slug(it.text), used), label: it.text, checked: it.checked }));
+      item.options = b.items.map((it) => ({ key: uniqueKey(markedKey(it.text) || slug(it.text), used), label: stripKey(it.text), checked: it.checked }));
       section.slots.push({ kind: 'checklist', key: item.key, item });
       return [item];
     }
@@ -142,7 +191,7 @@ function toItems(b, section, sub, key) {
 }
 
 function field(section, key, label, raw, source) {
-  const f = { type: 'field', key: key(label), label: plain(label), raw, input: interpret(phText(raw)), source };
+  const f = { type: 'field', key: key(label), label: plain(stripKey(label)), raw, input: interpret(phText(raw)), source };
   section.slots.push({ kind: f.input.kind === 'choice' ? 'choice' : 'text', key: f.key, item: f });
   return f;
 }
@@ -153,11 +202,11 @@ function kvTable(b, section, key) {
     const label = r[0] || '';
     const val = r[1] || '';
     if (hasPh(val)) {
-      const f = { type: 'field', key: key(label), label: plain(label), raw: val, input: interpret(phText(val)), source: 'table' };
+      const f = { type: 'field', key: key(label), label: plain(stripKey(label)), raw: val, input: interpret(phText(val)), source: 'table' };
       section.slots.push({ kind: f.input.kind === 'choice' ? 'choice' : 'text', key: f.key, item: f });
-      item.rows.push({ label, field: f });
+      item.rows.push({ label: stripKey(label), field: f });
     } else {
-      item.rows.push({ label, value: val });
+      item.rows.push({ label: stripKey(label), value: val });
     }
   }
   return item;
@@ -189,7 +238,7 @@ function grid(b, section, sub, key) {
   const item = {
     type: 'grid',
     key: key(sub || section.title),
-    label: sub || section.title,
+    label: stripKey(sub || section.title),
     header: b.header,
     rawRows: b.rows,
     columns,

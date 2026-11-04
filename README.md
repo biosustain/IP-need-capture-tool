@@ -165,6 +165,8 @@ questions from a few conventions:
 | `[Date]` or `[YYYY-MM-DD]` | Date picker |
 | `[a, b, c, d, or e]` (4+ short items) | Text with clickable suggestions |
 | `- [ ] item` | Checkbox |
+| `{#C1}` before a label or checkbox item | Pins that answer's key to `C1` instead of a slug of its text; the marker is not shown |
+| `> **Show when:** C0 includes data` under a `##` | The section is only asked when the condition holds |
 | Anything else (paragraphs, quotes, lists, tables without prompts) | Guidance text, shown read-only |
 
 Two front-matter fields are better left unset. **`id`** defaults to the filename, so setting it
@@ -175,6 +177,33 @@ never changes when you edit the file.
 
 Set `hidden: true` on a Markdown file that lives in `templates/` but is not a questionnaire — a
 document the app should still be able to serve, but never offer on the start page.
+
+### Conditional sections
+
+A `##` section may open with a `Show when:` quote. While the condition is false the section is not
+asked at all: it leaves the stepper, is skipped by next/previous, drops out of the progress count and
+does not appear in the review document. Answers already given are kept, so changing your mind back
+restores them.
+
+```markdown
+## Module D — Data, standards and LIMS
+
+> **Show when:** `C0` includes `data`
+```
+
+Four forms are understood, each naming one question by its key:
+
+| Condition | True when |
+| --- | --- |
+| `C0 includes data` | that checkbox is ticked (`C0 includes data or software` for either) |
+| `C9 is yes` | a single-choice answer equals `yes` |
+| `C9 is not no` | it is anything other than `no` |
+| `D1 is answered` | the question has any answer |
+
+Because a condition names a question, give that question a stable key with `{#C0}`; otherwise the key
+is a slug of its wording and rewording the question silently breaks the condition. A condition naming
+a question the template does not define is ignored and the section is always asked, so a typo makes a
+section appear rather than vanish.
 
 Answer keys come from the section headings and labels (`## Document Control` + `Project / campaign`
 → `document_control.project_campaign`). Renaming a heading or label therefore changes its key.

@@ -344,23 +344,54 @@ async function openFile(file) {
 function renderForm(draft, tpl, idx) {
   const base = `#/q/${encodeURIComponent(draft.id)}`;
   if (idx >= tpl.sections.length) { location.hash = `${base}/review`; return; }
+
+  // Conditional sections drop out of the flow entirely when their condition is unmet.
+  let asked = A.askedSections(tpl, draft.answers);
+  if (!asked.includes(tpl.sections[idx])) { // landed on a section this answer set does not ask for
+    const fallback = tpl.sections.indexOf(asked.find((s) => tpl.sections.indexOf(s) > idx) || asked[asked.length - 1]);
+    location.replace(fallback >= 0 ? `${base}/${fallback}` : `${base}/review`);
+    return;
+  }
   const section = tpl.sections[idx];
+  const stepOf = (s) => tpl.sections.indexOf(s);
+  let at = asked.indexOf(section);
 
   const onChange = (sectionKey, key, value) => {
     (draft.answers[sectionKey] ||= {})[key] = value;
     saveDraft(draft, false, tpl.version);
-    updateProgress(tpl, draft);
+    // An answer a condition reads can add or remove sections. Only the stepper,
+    // nav and counts change, so rebuild those rather than the inputs being used.
+    if (tpl.conditionDeps?.has(key)) refreshChrome(); else updateProgress(tpl, draft);
     const t = document.querySelector('[data-draft-label]');
     if (t) t.textContent = labelFor(draft, tpl);
   };
 
-  const stepper = h('nav', { class: 'stepper', 'aria-label': 'Sections' },
-    h('ol', {}, tpl.sections.map((s, i) => h('li', {},
-      h('a', { href: `${base}/${i}`, class: i === idx ? 'current' : '', 'aria-current': i === idx ? 'step' : null, 'data-step': s.key },
+  const buildStepper = () => h('nav', { class: 'stepper', 'aria-label': 'Sections' },
+    h('ol', {}, asked.map((s, i) => h('li', {},
+      h('a', { href: `${base}/${stepOf(s)}`, class: s === section ? 'current' : '', 'aria-current': s === section ? 'step' : null, 'data-step': s.key },
         h('span', { class: 'step-num' }, String(i + 1)),
         h('span', { class: 'step-title' }, s.title),
         h('span', { class: 'step-count', 'data-count': s.key }, ''))))),
     h('a', { href: `${base}/review`, class: 'step-review' }, 'Review & send →'));
+
+  const aside = h('aside', {}, buildStepper());
+  const navHost = h('div', { class: 'section-nav' });
+  const eyebrow = h('p', { class: 'eyebrow' }, '');
+
+  function refreshChrome() {
+    asked = A.askedSections(tpl, draft.answers);
+    at = asked.indexOf(section);
+    if (at < 0) { location.replace(`${base}/review`); return; } // current section no longer asked
+    aside.replaceChildren(buildStepper());
+    const prev = asked[at - 1], next = asked[at + 1];
+    navHost.replaceChildren(
+      prev ? h('a', { class: 'btn', href: `${base}/${stepOf(prev)}` }, '← ', prev.title) : h('span'),
+      next
+        ? h('a', { class: 'btn primary', href: `${base}/${stepOf(next)}` }, next.title, ' →')
+        : h('a', { class: 'btn primary', href: `${base}/review` }, 'Review & send →'));
+    eyebrow.textContent = `Section ${at + 1} of ${asked.length}`;
+    updateProgress(tpl, draft);
+  }
 
   const importInput = h('input', { type: 'file', accept: '.yaml,.yml,.json', class: 'visually-hidden', id: 'import-file', onChange: (e) => importInto(draft, tpl, e.target.files[0]) });
 
@@ -390,21 +421,15 @@ function renderForm(draft, tpl, idx) {
   for (const it of section.items) body.append(renderItem(tpl, section, it, draft, onChange));
   if (!section.slots.length) body.prepend(h('p', { class: 'note' }, 'This section is for reference — nothing to fill in.'));
 
-  const nav = h('div', { class: 'section-nav' },
-    idx > 0 ? h('a', { class: 'btn', href: `${base}/${idx - 1}` }, '← ', tpl.sections[idx - 1].title) : h('span'),
-    idx < tpl.sections.length - 1
-      ? h('a', { class: 'btn primary', href: `${base}/${idx + 1}` }, tpl.sections[idx + 1].title, ' →')
-      : h('a', { class: 'btn primary', href: `${base}/review` }, 'Review & send →'));
-
   mount(toolbar, h('div', { class: 'page form-layout' },
-    h('aside', {}, stepper),
+    aside,
     h('main', { class: 'form-main' },
       h('header', { class: 'section-head' },
-        h('p', { class: 'eyebrow' }, `Section ${idx + 1} of ${tpl.sections.length}`),
+        eyebrow,
         h('h1', { tabindex: '-1' }, section.title),
         h('p', { class: 'small muted', 'data-save-status': '' }, draft.updatedAt ? `Saved in this browser · ${fmtTime(draft.updatedAt)}` : 'Answers are saved in this browser as you type')),
-      body, nav)));
-  updateProgress(tpl, draft);
+      body, navHost)));
+  refreshChrome();
 }
 
 function updateProgress(tpl, draft) {
@@ -654,7 +679,7 @@ function docHeader(title, status, subtitle, actions) {
 }
 
 function docView({ tpl, answers, title, status, subtitle, actions, banner, editBase }) {
-  const sections = tpl.sections.filter((s) => s.slots.length).map((s) => {
+  const sections = A.askedSections(tpl, answers).filter((s) => s.slots.length).map((s) => {
     const idx = tpl.sections.indexOf(s);
     return h('section', { class: 'doc-section' },
       h('div', { class: 'doc-section-head' }, h('h2', {}, s.title),
