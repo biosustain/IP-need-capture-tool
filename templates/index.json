@@ -1,9 +1,9 @@
 [
   {
-    "id": "need-statement-template",
+    "id": "need-capture-template",
     "title": "Need Capture Questionnaire",
     "description": "The single instrument for collecting a need, for all three streams and both portfolios. Led by the portfolio manager in a live interview; the answers become a DRS.",
-    "file": "templates/need-statement-template.md",
+    "file": "templates/need-capture-template.md",
     "version": "9cde1ad0",
     "sections": 14,
     "questions": 59,
