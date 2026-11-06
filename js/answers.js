@@ -218,7 +218,7 @@ export function toJSON(doc) {
 // round-trippable format.
 
 /** Hoisted out of `answers:`, in the order the playbook prints them. */
-const TOP_LEVEL = ['need_id', 'need_description', 'project', 'portfolio_manager', 'mode', 'date', 'participants'];
+const TOP_LEVEL = ['need_id', 'need_description', 'project_id', 'project', 'portfolio_manager', 'mode', 'date', 'participants'];
 const LIST_FIELDS = new Set(['participants']);
 const LOWER_FIELDS = new Set(['mode']);
 

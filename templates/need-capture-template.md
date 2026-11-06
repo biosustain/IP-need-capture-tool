@@ -18,7 +18,8 @@ order: 1
 
 | Item | Value |
 | --- | --- |
-| {#project} Project | [Project, subproject or work package ID] |
+| {#project_id} Project ID | [Stable identifier for the unit this capture covers] |
+| {#project} Project | [Readable name of the project, subproject or work package] |
 | {#portfolio_manager} Portfolio manager | [Ding for missions, Lea for external programmes] |
 | {#mode} Mode | [Interview / Agent / Self-service] |
 | {#date} Date | [YYYY-MM-DD] |

@@ -131,7 +131,7 @@ The hand-off is a file, and there are two YAML exports because they answer diffe
 
 | Export | For | Shape |
 | --- | --- | --- |
-| **questionnaire.yaml** | the DRS drafting agent | the playbook's Part 3 format: `need_id`, `need_description`, `project`, `portfolio_manager`, `mode`, `date`, `participants` at the top level, every answer in a flat map keyed by its question ID, then `raw_notes`. One document per need — a session with several needs exports them `---` separated, which splits into one file each. The review page also offers each need on its own. |
+| **questionnaire.yaml** | the DRS drafting agent | the playbook's Part 3 format: `need_id`, `need_description`, `project_id`, `project`, `portfolio_manager`, `mode`, `date`, `participants` at the top level, every answer in a flat map keyed by its question ID, then `raw_notes`. One document per need — a session with several needs exports them `---` separated, which splits into one file each. The review page also offers each need on its own. |
 | **YAML (.yaml)** | this app | the app's own shape, nested by section and including the needs array. This is what **Open an answers file** reads back, so it is the one to keep as an archive. |
 
 Only questions pinned with `{#ID}` reach `questionnaire.yaml`; interviewer helpers such as the
