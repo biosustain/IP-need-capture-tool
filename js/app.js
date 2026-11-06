@@ -74,6 +74,7 @@ function toast(msg, kind = 'info') {
   setTimeout(() => t.remove(), 3700);
 }
 
+const cap1 = (x) => String(x).charAt(0).toUpperCase() + String(x).slice(1);
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
 
 function autosize(root = document) {
@@ -131,8 +132,13 @@ async function route() {
       const draft = readDraft(a);
       if (!draft) { toast('That questionnaire is no longer saved in this browser.', 'error'); return location.replace('#/'); }
       const tpl = await getTemplate(draft.templateId);
+      A.migrateNeeds(tpl, draft.answers); // answers saved before the template repeated
       if (b === 'review') return renderDraftReview(draft, tpl);
-      return renderForm(draft, tpl, Math.max(0, parseInt(b || '0', 10) || 0));
+      const idx = Math.max(0, parseInt(b || '0', 10) || 0);
+      // Sections in the repeated block always address a need; default to the first.
+      const repeats = !!tpl.repeat && tpl.repeat.sections.includes(tpl.sections[idx]);
+      const need = repeats ? Math.max(0, parseInt(parts[3] ?? '0', 10) || 0) : null;
+      return renderForm(draft, tpl, idx, need);
     }
     if (view === 'view') return state.opened ? renderOpened() : (location.hash = '#/');
     return renderHome();
@@ -141,6 +147,11 @@ async function route() {
     mount(h('div', { class: 'page narrow' }, h('div', { class: 'card error' },
       h('h2', {}, 'Something went wrong'), h('p', {}, e.message || String(e)), h('a', { class: 'btn', href: '#/' }, 'Back to templates'))));
   }
+}
+
+/** Navigate, re-rendering even when the target is the hash we are already on. */
+function goHash(target) {
+  if (location.hash === target) route(); else location.hash = target;
 }
 
 function mount(...nodes) {
@@ -341,23 +352,26 @@ async function openFile(file) {
 
 // ---------------------------------------------------------------- questionnaire
 
-function renderForm(draft, tpl, idx) {
+function renderForm(draft, tpl, idx, needIdx) {
   const base = `#/q/${encodeURIComponent(draft.id)}`;
   if (idx >= tpl.sections.length) { location.hash = `${base}/review`; return; }
+  const href = (st) => `${base}/${st.index}${st.need == null ? '' : `/${st.need}`}`;
 
-  // Conditional sections drop out of the flow entirely when their condition is unmet.
-  let asked = A.askedSections(tpl, draft.answers);
-  if (!asked.includes(tpl.sections[idx])) { // landed on a section this answer set does not ask for
-    const fallback = tpl.sections.indexOf(asked.find((s) => tpl.sections.indexOf(s) > idx) || asked[asked.length - 1]);
-    location.replace(fallback >= 0 ? `${base}/${fallback}` : `${base}/review`);
+  // Conditional sections drop out of the flow, and the repeated block appears once per need.
+  let steps = A.flow(tpl, draft.answers);
+  let at = steps.findIndex((st) => st.index === idx && st.need === needIdx);
+  if (at < 0) { // landed on a step this answer set does not ask for
+    const after = steps.find((st) => st.index > idx || (st.index === idx && (st.need ?? -1) > (needIdx ?? -1)));
+    location.replace(after ? href(after) : (steps.length ? href(steps[steps.length - 1]) : `${base}/review`));
     return;
   }
   const section = tpl.sections[idx];
-  const stepOf = (s) => tpl.sections.indexOf(s);
-  let at = asked.indexOf(section);
+  const scoped = () => A.scope(tpl, draft.answers, needIdx);
 
   const onChange = (sectionKey, key, value) => {
-    (draft.answers[sectionKey] ||= {})[key] = value;
+    // Section in the repeated block? Write into this need, not the session.
+    const bucket = needIdx == null ? draft.answers : A.needsOf(tpl, draft.answers)[needIdx];
+    (bucket[sectionKey] ||= {})[key] = value;
     saveDraft(draft, false, tpl.version);
     // An answer a condition reads can add or remove sections. Only the stepper,
     // nav and counts change, so rebuild those rather than the inputs being used.
@@ -366,30 +380,68 @@ function renderForm(draft, tpl, idx) {
     if (t) t.textContent = labelFor(draft, tpl);
   };
 
-  const buildStepper = () => h('nav', { class: 'stepper', 'aria-label': 'Sections' },
-    h('ol', {}, asked.map((s, i) => h('li', {},
-      h('a', { href: `${base}/${stepOf(s)}`, class: s === section ? 'current' : '', 'aria-current': s === section ? 'step' : null, 'data-step': s.key },
-        h('span', { class: 'step-num' }, String(i + 1)),
-        h('span', { class: 'step-title' }, s.title),
-        h('span', { class: 'step-count', 'data-count': s.key }, ''))))),
-    h('a', { href: `${base}/review`, class: 'step-review' }, 'Review & send →'));
+  const buildStepper = () => {
+    const items = [];
+    let lastNeed;
+    steps.forEach((st, i) => {
+      if (st.need !== lastNeed) {
+        lastNeed = st.need;
+        if (st.need != null) {
+          items.push(h('li', { class: 'step-group' },
+            h('span', {}, `${cap1(tpl.repeat.label)} ${st.need + 1}`),
+            A.needCount(tpl, draft.answers) > 1
+              ? h('button', {
+                class: 'link-btn', type: 'button', 'aria-label': `Remove ${tpl.repeat.label} ${st.need + 1}`,
+                onClick: () => removeNeedAt(st.need),
+              }, 'Remove') : null));
+        }
+      }
+      const cur = st.index === idx && st.need === needIdx;
+      items.push(h('li', {},
+        h('a', { href: href(st), class: cur ? 'current' : '', 'aria-current': cur ? 'step' : null },
+          h('span', { class: 'step-num' }, String(i + 1)),
+          h('span', { class: 'step-title' }, st.section.title),
+          h('span', { class: 'step-count', 'data-count': st.key }, ''))));
+    });
+    return h('nav', { class: 'stepper', 'aria-label': 'Sections' },
+      h('ol', {}, items),
+      tpl.repeat ? h('button', { class: 'btn add step-add', type: 'button', onClick: addNeedHere }, `+ Add ${tpl.repeat.label}`) : null,
+      h('a', { href: `${base}/review`, class: 'step-review' }, 'Review & send →'));
+  };
+
+  function addNeedHere() {
+    const n = A.addNeed(tpl, draft.answers);
+    saveDraft(draft, true, tpl.version);
+    const first = A.flow(tpl, draft.answers).find((st) => st.need === n);
+    goHash(first ? href(first) : `${base}/review`);
+  }
+
+  function removeNeedAt(n) {
+    const label = `${tpl.repeat.label} ${n + 1}`;
+    if (!confirm(`Remove ${label} and its answers?`)) return;
+    A.removeNeed(tpl, draft.answers, n);
+    saveDraft(draft, true, tpl.version);
+    toast(`${cap1(label)} removed`);
+    const back = A.flow(tpl, draft.answers)[0];
+    goHash(back ? href(back) : `${base}/review`);
+  }
 
   const aside = h('aside', {}, buildStepper());
   const navHost = h('div', { class: 'section-nav' });
   const eyebrow = h('p', { class: 'eyebrow' }, '');
 
   function refreshChrome() {
-    asked = A.askedSections(tpl, draft.answers);
-    at = asked.indexOf(section);
-    if (at < 0) { location.replace(`${base}/review`); return; } // current section no longer asked
+    steps = A.flow(tpl, draft.answers);
+    at = steps.findIndex((st) => st.index === idx && st.need === needIdx);
+    if (at < 0) { location.replace(`${base}/review`); return; } // current step no longer asked
     aside.replaceChildren(buildStepper());
-    const prev = asked[at - 1], next = asked[at + 1];
+    const prev = steps[at - 1], next = steps[at + 1];
     navHost.replaceChildren(
-      prev ? h('a', { class: 'btn', href: `${base}/${stepOf(prev)}` }, '← ', prev.title) : h('span'),
+      prev ? h('a', { class: 'btn', href: href(prev) }, '← ', prev.section.title) : h('span'),
       next
-        ? h('a', { class: 'btn primary', href: `${base}/${stepOf(next)}` }, next.title, ' →')
+        ? h('a', { class: 'btn primary', href: href(next) }, next.section.title, ' →')
         : h('a', { class: 'btn primary', href: `${base}/review` }, 'Review & send →'));
-    eyebrow.textContent = `Section ${at + 1} of ${asked.length}`;
+    eyebrow.textContent = `Step ${at + 1} of ${steps.length}`;
     updateProgress(tpl, draft);
   }
 
@@ -417,8 +469,9 @@ function renderForm(draft, tpl, idx) {
       importInput));
 
   const body = h('div', { class: 'section-body' });
-  if (idx === 0 && tpl.intro.length) body.append(h('div', { class: 'guidance intro', html: tpl.intro.map(renderBlock).join('') }));
-  for (const it of section.items) body.append(renderItem(tpl, section, it, draft, onChange));
+  if (at === 0 && tpl.intro.length) body.append(h('div', { class: 'guidance intro', html: tpl.intro.map(renderBlock).join('') }));
+  const view = { answers: scoped() };
+  for (const it of section.items) body.append(renderItem(tpl, section, it, view, onChange));
   if (!section.slots.length) body.prepend(h('p', { class: 'note' }, 'This section is for reference — nothing to fill in.'));
 
   mount(toolbar, h('div', { class: 'page form-layout' },
@@ -606,13 +659,21 @@ function exportMenu(get) {
     if (fmt === 'yaml') download(`${fileBase()}.yaml`, A.toYAML(doc), 'application/yaml');
     if (fmt === 'json') download(`${fileBase()}.json`, A.toJSON(doc), 'application/json');
     if (fmt === 'md') download(`${fileBase()}.md`, A.toMarkdown(tpl, answers, meta), 'text/markdown');
+    if (fmt === 'questionnaire') {
+      // One YAML document per need, `---` separated: splits into conformant files.
+      const n = A.needCount(tpl, answers);
+      const docs = n > 1
+        ? Array.from({ length: n }, (_, i) => A.toQuestionnaireYAML(tpl, answers, i)).join('---\n')
+        : A.toQuestionnaireYAML(tpl, answers, n ? 0 : null);
+      download('questionnaire.yaml', docs, 'application/yaml');
+    }
     if (fmt === 'copy') navigator.clipboard?.writeText(A.toYAML(doc)).then(() => toast('YAML copied to clipboard'));
   };
   const close = (e) => e.target.closest('details')?.removeAttribute('open');
   return h('details', { class: 'menu' },
     h('summary', { class: 'btn ghost' }, 'Export ▾'),
     h('div', { class: 'menu-list' },
-      [['yaml', 'YAML (.yaml)'], ['md', 'Markdown — filled template (.md)'], ['json', 'JSON (.json)'], ['copy', 'Copy YAML to clipboard']]
+      [['questionnaire', 'questionnaire.yaml — for the DRS agent'], ['yaml', 'YAML (.yaml) — reopens in this app'], ['md', 'Markdown — filled template (.md)'], ['json', 'JSON (.json)'], ['copy', 'Copy YAML to clipboard']]
         .map(([k, label]) => h('button', { type: 'button', class: 'menu-item', onClick: (e) => { run(k); close(e); } }, label))));
 }
 
@@ -621,6 +682,16 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------------------------------------------------------------- review / document view
+
+/** Per-need banner on the review document: warnings, and its own hand-off file. */
+function needHeader(tpl, answers, n, editBase, onNeed) {
+  const warn = A.needWarnings(tpl, answers, n);
+  return h('section', { class: 'need-head' },
+    h('div', { class: 'need-head-row' },
+      h('h2', {}, `${cap1(tpl.repeat.label)} ${n + 1}`),
+      onNeed ? h('button', { class: 'btn small', type: 'button', onClick: () => onNeed(n) }, 'questionnaire.yaml') : null),
+    warn.length ? h('ul', { class: 'need-warnings' }, warn.map((w) => h('li', {}, w))) : null);
+}
 
 function renderDraftReview(draft, tpl) {
   const base = `#/q/${encodeURIComponent(draft.id)}`;
@@ -634,8 +705,17 @@ function renderDraftReview(draft, tpl) {
   const banner = done < total
     ? h('p', { class: 'note' }, `${total - done} of ${total} questions are still open. You can send your answers anyway; open items stay visible as unresolved.`)
     : null;
-  const subtitle = [tpl.title, `${done} of ${total} answered`, draft.updatedAt ? `last saved ${fmtTime(draft.updatedAt)}` : null].filter(Boolean).join(' · ');
-  mount(docView({ tpl, answers: draft.answers, title: labelFor(draft, tpl), status: 'Your answers', subtitle, actions, banner, editBase: base }));
+  const needs = A.needCount(tpl, draft.answers);
+  const subtitle = [tpl.title, needs ? `${needs} ${tpl.repeat.label}${needs === 1 ? '' : 's'}` : null,
+    `${done} of ${total} answered`, draft.updatedAt ? `last saved ${fmtTime(draft.updatedAt)}` : null].filter(Boolean).join(' · ');
+  if (tpl.repeat) {
+    actions.splice(1, 0, h('button', {
+      class: 'btn ghost', type: 'button',
+      onClick: () => { A.addNeed(tpl, draft.answers); saveDraft(draft, true, tpl.version); route(); },
+    }, `+ Add ${tpl.repeat.label}`));
+  }
+  const onNeed = (n) => download(`questionnaire-${n + 1}.yaml`, A.toQuestionnaireYAML(tpl, draft.answers, n), 'application/yaml');
+  mount(docView({ tpl, answers: draft.answers, title: labelFor(draft, tpl), status: 'Your answers', subtitle, actions, banner, editBase: base, onNeed }));
 }
 
 function renderOpened() {
@@ -678,14 +758,21 @@ function docHeader(title, status, subtitle, actions) {
     h('div', { class: 'doc-actions' }, actions));
 }
 
-function docView({ tpl, answers, title, status, subtitle, actions, banner, editBase }) {
-  const sections = A.askedSections(tpl, answers).filter((s) => s.slots.length).map((s) => {
-    const idx = tpl.sections.indexOf(s);
-    return h('section', { class: 'doc-section' },
-      h('div', { class: 'doc-section-head' }, h('h2', {}, s.title),
-        editBase ? h('a', { class: 'small', href: `${editBase}/${idx}` }, 'Edit') : null),
-      s.items.map((it) => reviewItem(s, it, answers)).filter(Boolean));
-  });
+function docView({ tpl, answers, title, status, subtitle, actions, banner, editBase, onNeed }) {
+  const sections = [];
+  let lastNeed;
+  for (const st of A.flow(tpl, answers)) {
+    if (st.need !== lastNeed) {
+      lastNeed = st.need;
+      if (st.need != null) sections.push(needHeader(tpl, answers, st.need, editBase, onNeed));
+    }
+    if (!st.section.slots.length) continue;
+    const src = A.scope(tpl, answers, st.need);
+    sections.push(h('section', { class: 'doc-section' },
+      h('div', { class: 'doc-section-head' }, h('h2', {}, st.section.title),
+        editBase ? h('a', { class: 'small', href: `${editBase}/${st.index}${st.need == null ? '' : `/${st.need}`}` }, 'Edit') : null),
+      st.section.items.map((it) => reviewItem(st.section, it, src)).filter(Boolean)));
+  }
   const extra = A.unknownAnswers(tpl, answers);
   if (Object.keys(extra).length) sections.push(h('section', { class: 'doc-section' }, h('h2', {}, 'Other answers'), genericValue(extra)));
   return h('div', { class: 'page narrow doc' }, docHeader(title, status, subtitle, actions), banner, sections);

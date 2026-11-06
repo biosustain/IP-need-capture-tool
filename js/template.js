@@ -31,6 +31,7 @@ const markedKey = (s) => (String(s).match(KEY_MARK) || [])[1] || null;
 export const stripKey = (s) => String(s ?? '').replace(KEY_MARK, '');
 
 const WHEN_RE = /^\s*(?:\*\*)?Show when:?(?:\*\*)?\s*(.+)$/is;
+const REPEAT_RE = /^\s*(?:\*\*)?Repeats per:?(?:\*\*)?\s*(.+)$/is;
 
 /** `C0 includes data` / `C9 is yes` / `C9 is not no` / `D1 is answered` */
 function parseWhen(text) {
@@ -101,7 +102,12 @@ export function buildTemplate(src, { id, path } = {}) {
     tpl.sections.push(section);
     sub = null;
   };
-  const key = (label) => uniqueKey(markedKey(label) || slug(stripKey(label)), section._used);
+  const key = (label) => {
+    const marked = markedKey(label);
+    const k = uniqueKey(marked || slug(stripKey(label)), section._used);
+    if (marked) (tpl.idKeys ||= new Set()).add(k);
+    return k;
+  };
 
   let seenH1 = false;
   for (const b of blocks) {
@@ -116,10 +122,12 @@ export function buildTemplate(src, { id, path } = {}) {
       tpl.intro.push(b);
       continue;
     }
-    if (b.type === 'quote') { // `> Show when: …` is a directive, not guidance
+    if (b.type === 'quote') { // `> Show when: …` / `> Repeats per: …` are directives, not guidance
       const wm = b.text.match(WHEN_RE);
       const w = wm && parseWhen(wm[1]);
       if (w) { section.when = w; continue; }
+      const rm = b.text.match(REPEAT_RE);
+      if (rm) { section.repeat = plain(rm[1]).trim().replace(/[`.]/g, ''); continue; }
     }
     if (b.type === 'heading') { sub = b.text; section.items.push({ type: 'subheading', level: b.level, text: stripKey(b.text) }); continue; }
     section.items.push(...toItems(b, section, sub, key));
@@ -131,9 +139,31 @@ export function buildTemplate(src, { id, path } = {}) {
   }
   for (const s of tpl.sections) delete s._used;
   delete tpl._sectionKeys;
+  tpl.idKeys ||= new Set();
   if (!tpl.title) tpl.title = tpl.id;
+  resolveRepeat(tpl);
   resolveConditions(tpl);
   return tpl;
+}
+
+/**
+ * Sections marked `Repeats per: <label>` form one repeatable group — the block the
+ * questionnaire asks once per need. They must be contiguous, so the flow stays a
+ * single pass rather than jumping in and out of the group.
+ */
+function resolveRepeat(tpl) {
+  const marked = tpl.sections.filter((s) => s.repeat);
+  tpl.repeat = null;
+  if (!marked.length) return;
+  const labels = [...new Set(marked.map((s) => s.repeat))];
+  if (labels.length > 1) throw new Error(`A template may repeat on one thing only; found: ${labels.join(', ')}`);
+  const idx = marked.map((s) => tpl.sections.indexOf(s));
+  for (let i = 1; i < idx.length; i++) {
+    if (idx[i] !== idx[i - 1] + 1) {
+      throw new Error(`Sections that repeat per ${labels[0]} must be next to each other; "${tpl.sections[idx[i]].title}" is separated from the rest`);
+    }
+  }
+  tpl.repeat = { label: labels[0], key: `${slug(labels[0])}s`, sections: marked, first: idx[0], last: idx[idx.length - 1] };
 }
 
 /**

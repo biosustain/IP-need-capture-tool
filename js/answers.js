@@ -66,41 +66,131 @@ export function askedSections(tpl, answers) {
   return tpl.sections.filter((s) => isAsked(s, answers));
 }
 
+// ---------- repeated groups ----------
+//
+// A template may mark a run of sections as repeating (one per need). Those sections'
+// answers live in `answers[<key>][i]` rather than at the top level. Reads go through
+// `scope()`, which overlays one instance on the project-level answers, so everything
+// downstream — getValue, isAsked, progress, the review view — works unchanged.
+
+/** Project-level answers with one repeat instance overlaid. */
+export function scope(tpl, answers, i) {
+  if (i == null || !tpl?.repeat) return answers || {};
+  return { ...(answers || {}), ...((answers?.[tpl.repeat.key] || [])[i] || {}) };
+}
+
+export function needsOf(tpl, answers) {
+  if (!tpl?.repeat) return [];
+  const a = answers || {};
+  if (!Array.isArray(a[tpl.repeat.key]) || !a[tpl.repeat.key].length) a[tpl.repeat.key] = [{}];
+  return a[tpl.repeat.key];
+}
+
+export const needCount = (tpl, answers) => (tpl?.repeat ? needsOf(tpl, answers).length : 0);
+export const addNeed = (tpl, answers) => needsOf(tpl, answers).push({}) - 1;
+
+export function removeNeed(tpl, answers, i) {
+  const arr = needsOf(tpl, answers);
+  arr.splice(i, 1);
+  if (!arr.length) arr.push({});
+}
+
+/** Answers saved before the template repeated: fold the group's sections into need 1. */
+export function migrateNeeds(tpl, answers) {
+  if (!tpl?.repeat || !answers || Array.isArray(answers[tpl.repeat.key])) return answers;
+  const inGroup = new Set(tpl.repeat.sections.map((s) => s.key));
+  const need = {};
+  for (const k of Object.keys(answers)) if (inGroup.has(k)) { need[k] = answers[k]; delete answers[k]; }
+  answers[tpl.repeat.key] = [need];
+  return answers;
+}
+
+/**
+ * The questionnaire as it is actually walked: project sections in template order, with
+ * the repeated block expanded once per need at the point where it sits.
+ */
+export function flow(tpl, answers) {
+  const r = tpl.repeat;
+  const out = [];
+  tpl.sections.forEach((s, i) => {
+    if (r && i === r.first) {
+      for (let n = 0; n < needCount(tpl, answers); n++) {
+        const sc = scope(tpl, answers, n);
+        for (const gs of r.sections) {
+          if (isAsked(gs, sc)) out.push({ section: gs, need: n, key: `${gs.key}#${n}`, index: tpl.sections.indexOf(gs) });
+        }
+      }
+    }
+    if (r && i >= r.first && i <= r.last) return; // expanded above
+    if (isAsked(s, answers)) out.push({ section: s, need: null, key: s.key, index: i });
+  });
+  return out;
+}
+
 export function progress(tpl, answers) {
-  return askedSections(tpl, answers).map((s) => {
-    const total = s.slots.length;
-    const done = s.slots.filter((sl) => isFilled(sl, getValue(answers, s, sl))).length;
-    return { key: s.key, total, done };
+  return flow(tpl, answers).map((st) => {
+    const sc = scope(tpl, answers, st.need);
+    const total = st.section.slots.length;
+    const done = st.section.slots.filter((sl) => isFilled(sl, getValue(sc, st.section, sl))).length;
+    return { key: st.key, total, done, need: st.need };
   });
 }
 
 /** Template-ordered answers, including empty ones, plus any keys the template doesn't know. */
 export function normalizeAnswers(tpl, answers = {}) {
+  const r = tpl.repeat;
+  const inGroup = new Set(r ? r.sections.map((s) => s.key) : []);
+  const sectionObj = (s, src) => {
+    const sec = {};
+    for (const sl of s.slots) sec[sl.key] = clone(getValue(src, s, sl));
+    for (const [k, v] of Object.entries(src[s.key] || {})) if (!(k in sec)) sec[k] = clone(v);
+    return sec;
+  };
   const out = {};
   for (const s of tpl.sections) {
-    if (!s.slots.length) continue;
-    const sec = {};
-    for (const sl of s.slots) sec[sl.key] = clone(getValue(answers, s, sl));
-    for (const [k, v] of Object.entries(answers[s.key] || {})) if (!(k in sec)) sec[k] = clone(v);
-    out[s.key] = sec;
+    if (!s.slots.length || inGroup.has(s.key)) continue;
+    out[s.key] = sectionObj(s, answers);
   }
-  for (const [k, v] of Object.entries(answers)) if (!(k in out)) out[k] = clone(v);
+  if (r) {
+    out[r.key] = needsOf(tpl, answers).map((_, i) => {
+      const sc = scope(tpl, answers, i);
+      const o = {};
+      for (const s of r.sections) if (s.slots.length) o[s.key] = sectionObj(s, sc);
+      return o;
+    });
+  }
+  for (const [k, v] of Object.entries(answers)) {
+    if (k in out || inGroup.has(k) || (r && k === r.key)) continue;
+    out[k] = clone(v);
+  }
   return out;
 }
 
 /** Answers present in a document that the template doesn't define. */
 export function unknownAnswers(tpl, answers = {}) {
-  const extra = {};
   const secs = Object.fromEntries(tpl.sections.map((s) => [s.key, s]));
-  for (const [k, v] of Object.entries(answers)) {
-    const s = secs[k];
-    if (!s) { extra[k] = v; continue; }
-    const slotKeys = new Set(s.slots.map((x) => x.key));
-    for (const [fk, fv] of Object.entries(v || {})) if (!slotKeys.has(fk)) (extra[k] ||= {})[fk] = fv;
+  const scan = (src, into) => {
+    for (const [k, v] of Object.entries(src || {})) {
+      if (tpl.repeat && k === tpl.repeat.key) continue; // the repeat container, scanned per need
+      const s = secs[k];
+      if (!s) { into[k] = v; continue; }
+      const slotKeys = new Set(s.slots.map((x) => x.key));
+      for (const [fk, fv] of Object.entries(v || {})) if (!slotKeys.has(fk)) (into[k] ||= {})[fk] = fv;
+    }
+  };
+  const extra = {};
+  scan(answers, extra);
+  if (tpl.repeat) {
+    (answers[tpl.repeat.key] || []).forEach((need, i) => {
+      const inNeed = {};
+      scan(need, inNeed);
+      if (Object.keys(inNeed).length) (extra[`${tpl.repeat.label} ${i + 1}`] = inNeed);
+    });
   }
   return extra;
 }
 
+const cap1 = (x) => String(x).charAt(0).toUpperCase() + String(x).slice(1);
 const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 
 export function buildDocument(tpl, answers, meta = {}) {
@@ -118,6 +208,88 @@ export function toYAML(doc) {
 
 export function toJSON(doc) {
   return JSON.stringify(doc, null, 2) + '\n';
+}
+
+// ---------- questionnaire.yaml (the playbook's hand-off format) ----------
+//
+// One file per need: identity fields hoisted to the top level, every other answer
+// in a flat map keyed by its question ID, exactly as Part 3 "Output format" sets out.
+// This is what the DRS drafting agent reads; `toYAML` above stays the app's own
+// round-trippable format.
+
+/** Hoisted out of `answers:`, in the order the playbook prints them. */
+const TOP_LEVEL = ['need_id', 'project', 'portfolio_manager', 'mode', 'date', 'participants'];
+const LIST_FIELDS = new Set(['participants']);
+const LOWER_FIELDS = new Set(['mode']);
+
+/** One answer as the hand-off format wants it: scalars, or a list for multi-select. */
+function exportValue(slot, v) {
+  if (slot.kind === 'checklist') return Object.entries(v || {}).filter(([, on]) => on).map(([k]) => k);
+  if (slot.kind === 'grid') {
+    return (Array.isArray(v) ? v : [])
+      .map((row) => Object.fromEntries(Object.entries(row).filter(([, cell]) => filledCell(cell))))
+      .filter((row) => Object.keys(row).length);
+  }
+  return choiceText(v);
+}
+
+/**
+ * Advisory only. A need should be small enough to carry one acceptance check and
+ * one tester; these flag the shapes that usually mean two needs wearing one coat.
+ */
+export function needWarnings(tpl, answers, i) {
+  if (!tpl?.repeat) return [];
+  const sc = scope(tpl, answers, i);
+  const find = (key) => {
+    for (const s of tpl.sections) {
+      const sl = s.slots.find((x) => x.key === key);
+      if (sl) return { section: s, slot: sl };
+    }
+    return null;
+  };
+  const val = (key) => { const t = find(key); return t ? getValue(sc, t.section, t.slot) : undefined; };
+  const filled = (key) => { const t = find(key); return t ? isFilled(t.slot, getValue(sc, t.section, t.slot)) : false; };
+
+  const out = [];
+  const streams = Object.entries(val('C0') || {}).filter(([, on]) => on).map(([k]) => k);
+  if (streams.length > 1) {
+    out.push(`C0 selects ${streams.length} streams, so this becomes a requirement bundle. That is allowed — but if the parts have different testers or different acceptance checks, they are two needs.`);
+  }
+  if (!filled('C5')) out.push('No acceptance check (C5). A need that cannot be tested cannot be closed.');
+  if (!filled('C11')) out.push('Nothing marked out of scope (C11). Naming the boundary is usually what keeps a need small.');
+  if (!filled('C6')) out.push('No tester named (C6).');
+  return out;
+}
+
+export function toQuestionnaireYAML(tpl, answers, needIndex = null) {
+  const scoped = scope(tpl, answers, needIndex ?? (tpl.repeat ? 0 : null));
+  const out = {};
+  const body = {};
+  let notes = '';
+
+  for (const s of askedSections(tpl, scoped)) {
+    for (const sl of s.slots) {
+      const v = exportValue(sl, getValue(scoped, s, sl));
+      // Only questions pinned with {#ID} belong in an ID-keyed map; slugged
+      // helpers such as the prep checklist are interviewer process, not need data.
+      if (!tpl.idKeys?.has(sl.key)) continue;
+      if (sl.key === 'raw_notes') { notes = String(v || ''); continue; }
+      if (TOP_LEVEL.includes(sl.key)) {
+        out[sl.key] = LIST_FIELDS.has(sl.key)
+          ? String(v || '').split(',').map((x) => x.trim()).filter(Boolean)
+          : (LOWER_FIELDS.has(sl.key) ? String(v || '').toLowerCase() : v);
+        continue;
+      }
+      body[sl.key] = v;
+    }
+  }
+
+  // Fixed key order: identity, then answers, then notes.
+  const doc = {};
+  for (const k of TOP_LEVEL) doc[k] = out[k] ?? (LIST_FIELDS.has(k) ? [] : '');
+  doc.answers = body;
+  if (notes.trim()) doc.raw_notes = notes;
+  return dump(doc, { lineWidth: -1, noRefs: true });
 }
 
 export function parseDocument(text) {
@@ -140,7 +312,14 @@ export function toMarkdown(tpl, answers, meta = {}) {
   stamp.push(`exported ${new Date().toISOString().slice(0, 10)}`);
   out.push(`<!-- ${stamp.join(', ')} -->`);
   for (const b of tpl.intro) out.push(blockToMarkdown(b));
-  for (const s of tpl.sections) {
+  const walk = tpl.repeat
+    ? flow(tpl, answers).map((st) => ({ s: st.section, src: scope(tpl, answers, st.need), need: st.need }))
+    : tpl.sections.map((s) => ({ s, src: answers, need: null }));
+  let lastNeed;
+  // `answers` is deliberately shadowed per step, so the body below reads the
+  // right need instance without threading an index through every getValue call.
+  for (const { s, src: answers, need } of walk) {
+    if (need !== lastNeed) { if (need != null) out.push(`# ${cap1(tpl.repeat.label)} ${need + 1}`); lastNeed = need; }
     out.push(`## ${s.title}`);
     const slotOf = (key) => s.slots.find((x) => x.key === key);
     for (const it of s.items) {

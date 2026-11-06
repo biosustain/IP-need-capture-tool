@@ -99,6 +99,20 @@ are **per browser and per device**: they are not shared between people, do not f
 machine, and are lost if the browser's site data is cleared. Export a copy to keep anything that
 matters.
 
+## One capture, several needs
+
+A capture interview covers one project but usually surfaces several needs, and the playbook gives
+each need its own file. So a draft is **one capture session**: the project details are answered once,
+and the block from *Need details* to *External programme* repeats per need.
+
+Use **+ Add need** in the stepper or on the review page. Each need carries its own routing answer, so
+one need can open Module D while another opens Module A. Removing a need leaves the others untouched.
+
+Keep each need as small as it can be while still standing on its own — one observable outcome, one
+tester, one acceptance check. The review page flags the shapes that usually mean two needs wearing
+one coat: a routing answer spanning several streams, no acceptance check, no stated scope boundary,
+no named tester. Those notes are advisory and never block anything.
+
 ## From needs to requirements
 
 The app deliberately collects **needs**, not requirements. Asking a project team to write
@@ -113,9 +127,15 @@ templates/needs-statement-template.md     the questionnaire the app serves
 templates/requirement-specification-template.md
 ```
 
-The hand-off is a file. Export the completed needs statement as **Markdown — filled template**,
-which carries the headings, tables and guidance as written, and give that to the skill. The YAML
-export is the canonical archive: it is what reopens in the app.
+The hand-off is a file, and there are two YAML exports because they answer different questions:
+
+| Export | For | Shape |
+| --- | --- | --- |
+| **questionnaire.yaml** | the DRS drafting agent | the playbook's Part 3 format: `need_id`, `project`, `portfolio_manager`, `mode`, `date`, `participants` at the top level, every answer in a flat map keyed by its question ID, then `raw_notes`. One document per need — a session with several needs exports them `---` separated, which splits into one file each. The review page also offers each need on its own. |
+| **YAML (.yaml)** | this app | the app's own shape, nested by section and including the needs array. This is what **Open an answers file** reads back, so it is the one to keep as an archive. |
+
+Only questions pinned with `{#ID}` reach `questionnaire.yaml`; interviewer helpers such as the
+before-capture checklist stay out of the hand-off.
 
 Both templates are offered on the start page. The needs statement is what you send a project team.
 The specification is normally written by the skill, but having it in the app lets the platform team
@@ -167,6 +187,7 @@ questions from a few conventions:
 | `- [ ] item` | Checkbox |
 | `{#C1}` before a label or checkbox item | Pins that answer's key to `C1` instead of a slug of its text; the marker is not shown |
 | `> **Show when:** C0 includes data` under a `##` | The section is only asked when the condition holds |
+| `> **Repeats per:** need` under a `##` | The section is asked once per need |
 | Anything else (paragraphs, quotes, lists, tables without prompts) | Guidance text, shown read-only |
 
 Two front-matter fields are better left unset. **`id`** defaults to the filename, so setting it
@@ -204,6 +225,22 @@ Because a condition names a question, give that question a stable key with `{#C0
 is a slug of its wording and rewording the question silently breaks the condition. A condition naming
 a question the template does not define is ignored and the section is always asked, so a typo makes a
 section appear rather than vanish.
+
+### Repeatable sections
+
+A run of `##` sections may be marked `> **Repeats per:** <label>`, making it a block the questionnaire
+asks once per instance. The marked sections must be next to each other; the build script fails loudly
+if they are not, so the mistake surfaces in CI rather than in a browser.
+
+```markdown
+## Routing question
+
+> **Repeats per:** need
+```
+
+Those sections' answers live under `answers.<label>s[i]` instead of at the top level, and conditions
+inside the block are evaluated against that instance — so each need routes independently. A condition
+may still name a project-level question, and vice versa.
 
 Answer keys come from the section headings and labels (`## Document Control` + `Project / campaign`
 → `document_control.project_campaign`). Renaming a heading or label therefore changes its key.

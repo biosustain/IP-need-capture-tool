@@ -18,7 +18,6 @@ order: 1
 
 | Item | Value |
 | --- | --- |
-| {#need_id} Need ID | [NEED-0000] |
 | {#project} Project | [Project, subproject or work package ID] |
 | {#portfolio_manager} Portfolio manager | [Ding for missions, Lea for external programmes] |
 | {#mode} Mode | [Interview / Agent / Self-service] |
@@ -33,19 +32,36 @@ order: 1
 - [ ] Invite the requester, the project standards contact and, if known, the person who will test the result.
 - [ ] If the need is clearly software or data science, invite a reviewer from RSE or DS for that module.
 
+## Need details
+
+> **Repeats per:** need
+
+One need per block. Keep each need as small as it can be while still standing on its own:
+one observable outcome, one tester, one acceptance check. If parts of what you are hearing
+have different testers or different acceptance checks, add another need rather than widening
+this one.
+
+| Item | Value |
+| --- | --- |
+| {#need_id} Need ID | [NEED-0000] |
+
 ## Routing question
+
+> **Repeats per:** need
 
 Always asked first. The answer selects which stream modules follow.
 
 ### {#C0} When this is done, what should exist that does not exist today?
 
-- [ ] {#data} Data captured or described in a standard way
-- [ ] {#software} A tool, service or connection
-- [ ] {#analysis} An answer, analysis or model
+- [ ] {#a} (a) Data captured or described in a standard way
+- [ ] {#b} (b) A tool, service or connection
+- [ ] {#c} (c) An answer, analysis or model
 
 Several answers mean a requirement bundle with one requirement per stream.
 
 ## Core questions
+
+> **Repeats per:** need
 
 Always asked.
 
@@ -95,7 +111,9 @@ Always asked.
 
 ## Module D — Data, standards and LIMS
 
-> **Show when:** `C0` includes `data`
+> **Repeats per:** need
+
+> **Show when:** `C0` includes `a`
 
 Data stream, Standards Office. A stream reviewer from the owning team may join for this part.
 
@@ -113,7 +131,9 @@ Data stream, Standards Office. A stream reviewer from the owning team may join f
 
 ## Module S — Software
 
-> **Show when:** `C0` includes `software`
+> **Repeats per:** need
+
+> **Show when:** `C0` includes `b`
 
 Software stream, RSE. A stream reviewer from the owning team may join for this part.
 
@@ -133,7 +153,9 @@ Software stream, RSE. A stream reviewer from the owning team may join for this p
 
 ## Module A — Analysis and models
 
-> **Show when:** `C0` includes `analysis`
+> **Repeats per:** need
+
+> **Show when:** `C0` includes `c`
 
 Data-science stream, DS. A stream reviewer from the owning team may join for this part.
 
@@ -153,59 +175,69 @@ Data-science stream, DS. A stream reviewer from the owning team may join for thi
 
 ## Instruments
 
+> **Repeats per:** need
+
 > Trigger: C4 or D5 names an instrument or robot. Skip this section if it does not.
 
-**Which instrument and software version?** [Instrument and version]
+**{#IN1} Which instrument and software version?** [Instrument and version]
 
-**Native file format?** [Format]
+**{#IN2} Native file format?** [Format]
 
-**API or disk export only?** [Access route]
+**{#IN3} API or disk export only?** [Access route]
 
-**Who maintains the method?** [Method owner]
+**{#IN4} Who maintains the method?** [Method owner]
 
 ## Sharing and IP
 
+> **Repeats per:** need
+
 > Trigger: external partners, publication or company data. Skip this section if none apply.
 
-**Who outside the group needs access, and when?** [External access]
+**{#SH1} Who outside the group needs access, and when?** [External access]
 
-**Embargo or licence?** [Embargo or licence]
+**{#SH2} Embargo or licence?** [Embargo or licence]
 
-**Must data go to a public repository?** [Public repository]
+**{#SH3} Must data go to a public repository?** [Public repository]
 
 ## Personal and clinical data
 
+> **Repeats per:** need
+
 > Trigger: human samples or participant data. Skip this section if none are involved.
 
-**Personal or pseudonymised?** [Personal or pseudonymised]
+**{#PD1} Personal or pseudonymised?** [Personal or pseudonymised]
 
-**Which approvals cover it?** [Approvals]
+**{#PD2} Which approvals cover it?** [Approvals]
 
-**Where may it be stored and processed?** [Storage and processing]
+**{#PD3} Where may it be stored and processed?** [Storage and processing]
 
-**Which models may see it?** [Permitted models]
+**{#PD4} Which models may see it?** [Permitted models]
 
 ## Automation and agents
 
+> **Repeats per:** need
+
 > **Show when:** `C9` is `yes`
 
-**Which actions may an agent take alone, and which need a human check?** [Autonomy boundary]
+**{#AU1} Which actions may an agent take alone, and which need a human check?** [Autonomy boundary]
 
-**What must be logged for audit?** [Audit log]
+**{#AU2} What must be logged for audit?** [Audit log]
 
-**What should happen on failure?** [Failure behaviour]
+**{#AU3} What should happen on failure?** [Failure behaviour]
 
 ## External programme
 
+> **Repeats per:** need
+
 > Trigger: the need comes from a programme in Lea's portfolio. Skip this section otherwise.
 
-**Which deliverable or milestone does it serve?** [Deliverable or milestone]
+**{#EP1} Which deliverable or milestone does it serve?** [Deliverable or milestone]
 
-**Which consortium or infrastructure standards apply?** [Standards]
+**{#EP2} Which consortium or infrastructure standards apply?** [Standards]
 
-**Which partners produce or consume the data?** [Partners]
+**{#EP3} Which partners produce or consume the data?** [Partners]
 
-**What must be reported to the funder, and when?** [Reporting]
+**{#EP4} What must be reported to the funder, and when?** [Reporting]
 
 ## Closing the capture
 
