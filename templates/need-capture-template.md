@@ -44,6 +44,7 @@ this one.
 | Item | Value |
 | --- | --- |
 | {#need_id} Need ID | [NEED-0000] |
+| {#need_description} Need in one sentence | [What this need is, and where in the raw material it comes from — transcript timestamps, interview notes or a document] |
 
 ## Routing question
 
