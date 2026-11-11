@@ -201,7 +201,7 @@ function toItems(b, section, sub, key) {
   if (b.type === 'list') {
     if (b.items.every((it) => it.task)) {
       // The sub-heading above it already states the question, so no duplicate legend.
-      const item = { type: 'checklist', key: key(sub || section.title + ' checklist'), label: '', options: [] };
+      const item = { type: 'checklist', key: key(sub || section.title + ' checklist'), label: '', question: plain(stripKey(sub || section.title)), options: [] };
       const used = new Set();
       item.options = b.items.map((it) => ({ key: uniqueKey(markedKey(it.text) || slug(it.text), used), label: stripKey(it.text), checked: it.checked }));
       section.slots.push({ kind: 'checklist', key: item.key, item });

@@ -233,7 +233,17 @@ const TOP_LEVEL = ['need_id', 'need_description', 'project_id', 'project', 'port
 const LIST_FIELDS = new Set(['participants']);
 const LOWER_FIELDS = new Set(['mode']);
 /** Free text that closes the file rather than sitting in the ID-keyed answer map. */
-const TRAILING = ['raw_notes', 'session_notes'];
+const TRAILING = ['raw_notes'];
+/** Captured in the app, but not part of a single need's hand-off. */
+const NOT_EXPORTED = new Set(['session_notes']);
+
+/** The question as it was put, so the file reads without the template beside it. */
+function questionOf(slot) {
+  const base = slot.item.question || slot.item.label || '';
+  if (slot.kind !== 'checklist') return base;
+  const opts = (slot.item.options || []).map((o) => o.label).join('; ');
+  return opts ? `${base} — ${opts}` : base;
+}
 
 /** One answer as the hand-off format wants it: scalars, or a list for multi-select. */
 function exportValue(slot, v) {
@@ -285,7 +295,7 @@ export function toQuestionnaireYAML(tpl, answers, needIndex = null) {
       const v = exportValue(sl, getValue(scoped, s, sl));
       // Only questions pinned with {#ID} belong in an ID-keyed map; slugged
       // helpers such as the prep checklist are interviewer process, not need data.
-      if (!tpl.idKeys?.has(sl.key)) continue;
+      if (!tpl.idKeys?.has(sl.key) || NOT_EXPORTED.has(sl.key)) continue;
       if (TRAILING.includes(sl.key)) { notes[sl.key] = String(v || ''); continue; }
       if (TOP_LEVEL.includes(sl.key)) {
         out[sl.key] = LIST_FIELDS.has(sl.key)
@@ -293,7 +303,7 @@ export function toQuestionnaireYAML(tpl, answers, needIndex = null) {
           : (LOWER_FIELDS.has(sl.key) ? String(v || '').toLowerCase() : v);
         continue;
       }
-      body[sl.key] = v;
+      body[sl.key] = { question: questionOf(sl), answer: v };
     }
   }
 
