@@ -131,18 +131,22 @@ The hand-off is a file, and there are two YAML exports because they answer diffe
 
 | Export | For | Shape |
 | --- | --- | --- |
-| **questionnaire.yaml** | the DRS drafting agent | the playbook's Part 3 format: `need_id`, `need_description`, `project_id`, `project`, `portfolio_manager`, `mode`, `date`, `participants` at the top level, every answer in a flat map keyed by its question ID, then `raw_notes`. One document per need — a session with several needs exports them `---` separated, which splits into one file each. The review page also offers each need on its own. |
+| **questionnaire.yaml — this need only** | the DRS drafting agent | one need, named `<project>-<need id>-questionnaire.yaml`. Offered while you are working inside a need. |
+| **questionnaire.yaml — all needs** | the DRS drafting agent | the playbook's Part 3 format: `need_id`, `need_description`, `project_id`, `project`, `portfolio_manager`, `mode`, `date`, `participants` at the top level, every answer in a flat map keyed by its question ID, then `raw_notes`. One document per need — a session with several needs exports them `---` separated, which splits into one file each. The review page also offers each need on its own. |
 | **YAML (.yaml)** | this app | the app's own shape, nested by section and including the needs array. This is what **Open an answers file** reads back, so it is the one to keep as an archive. |
 
 Only questions pinned with `{#ID}` reach `questionnaire.yaml`; interviewer helpers such as the
 before-capture checklist stay out of the hand-off.
 
-Two fields carry provenance, and they work at different levels. **`need_description`** is per need:
-one sentence saying what the need is and where in the raw material it came from — a transcript
-timestamp, a set of notes, a document — so a reader can check the need against its source.
-**`raw_notes`** is per session: it lives in *Closing the capture*, outside the repeated block, so the
-same record of the interview is copied into every need's file. One says where this need came from;
-the other is the whole conversation it came out of.
+Three fields carry provenance, at three levels:
+
+| Field | Level | What it holds |
+| --- | --- | --- |
+| `need_description` | per need | One sentence saying what the need is and where in the raw material it came from — a transcript timestamp, a set of notes, a document. |
+| `raw_notes` | per need | *Need notes*, the last step of each need: the part of the conversation that need came out of. |
+| `session_notes` | per session | *Closing the capture*, outside the repeated block: the interview as a whole — scope, sources, decisions and anything spanning several needs. Copied into every need's file. |
+
+So a need's file carries its own notes and the session's, and you can tell which is which.
 
 Both templates are offered on the start page. The needs statement is what you send a project team.
 The specification is normally written by the skill, but having it in the app lets the platform team

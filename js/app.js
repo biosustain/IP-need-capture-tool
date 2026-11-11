@@ -133,6 +133,7 @@ async function route() {
       if (!draft) { toast('That questionnaire is no longer saved in this browser.', 'error'); return location.replace('#/'); }
       const tpl = await getTemplate(draft.templateId);
       A.migrateNeeds(tpl, draft.answers); // answers saved before the template repeated
+      A.migrateNotes(tpl, draft.answers);  // ... and before the notes were split per need
       if (b === 'review') return renderDraftReview(draft, tpl);
       const idx = Math.max(0, parseInt(b || '0', 10) || 0);
       // Sections in the repeated block always address a need; default to the first.
@@ -455,7 +456,7 @@ function renderForm(draft, tpl, idx, needIdx) {
     h('div', { class: 'toolbar-progress' }, h('div', { class: 'bar' }, h('span', { 'data-overall': '' })), h('span', { class: 'small muted', 'data-overall-text': '' })),
     h('div', { class: 'toolbar-actions' },
       h('a', { class: 'btn ghost', href: `${base}/review` }, 'Review'),
-      exportMenu(() => ({ tpl, draft, answers: draft.answers, meta: {} })),
+      exportMenu(() => ({ tpl, draft, answers: draft.answers, meta: {}, need: needIdx })),
       h('details', { class: 'menu' },
         h('summary', { class: 'btn ghost icon', 'aria-label': 'More actions' }, '⋯'),
         h('div', { class: 'menu-list' },
@@ -646,6 +647,22 @@ function copyLink(tpl) {
 
 // ---------------------------------------------------------------- export menu
 
+/** `<project>-<need id or number>-questionnaire.yaml` — identifying, not `questionnaire-2.yaml`. */
+function needFileName(tpl, answers, n) {
+  const sc = A.scope(tpl, answers, n);
+  const at = (key) => {
+    for (const s of tpl.sections) {
+      const sl = s.slots.find((x) => x.key === key);
+      if (sl) return String(A.choiceText(A.getValue(sc, s, sl)) || '').trim();
+    }
+    return '';
+  };
+  // Keep identifiers legible — NEED-1 should stay NEED-1, not become need_1.
+  const safe = (x) => String(x).trim().replace(/[^A-Za-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+  const parts = [at('project_id') || at('project'), at('need_id') || `${tpl.repeat?.label || 'need'}-${n + 1}`];
+  return `${parts.map(safe).filter(Boolean).join('-')}-questionnaire.yaml`;
+}
+
 function exportMenu(get) {
   const fileBase = () => {
     const { tpl, draft, answers } = get();
@@ -654,18 +671,22 @@ function exportMenu(get) {
     return [tpl.id, name ? slug(name).slice(0, 40) : null, new Date().toISOString().slice(0, 10)].filter(Boolean).join('-');
   };
   const run = (fmt) => {
-    const { tpl, answers, meta } = get();
+    const { tpl, answers, meta, need } = get();
     const doc = A.buildDocument(tpl, answers, meta);
     if (fmt === 'yaml') download(`${fileBase()}.yaml`, A.toYAML(doc), 'application/yaml');
     if (fmt === 'json') download(`${fileBase()}.json`, A.toJSON(doc), 'application/json');
     if (fmt === 'md') download(`${fileBase()}.md`, A.toMarkdown(tpl, answers, meta), 'text/markdown');
+    // The need you are working on, on its own.
+    if (fmt === 'questionnaire-need' && need != null) {
+      download(needFileName(tpl, answers, need), A.toQuestionnaireYAML(tpl, answers, need), 'application/yaml');
+    }
     if (fmt === 'questionnaire') {
       // One YAML document per need, `---` separated: splits into conformant files.
       const n = A.needCount(tpl, answers);
       const docs = n > 1
         ? Array.from({ length: n }, (_, i) => A.toQuestionnaireYAML(tpl, answers, i)).join('---\n')
         : A.toQuestionnaireYAML(tpl, answers, n ? 0 : null);
-      download('questionnaire.yaml', docs, 'application/yaml');
+      download(`${fileBase()}-questionnaire.yaml`, docs, 'application/yaml');
     }
     if (fmt === 'copy') navigator.clipboard?.writeText(A.toYAML(doc)).then(() => toast('YAML copied to clipboard'));
   };
@@ -673,7 +694,14 @@ function exportMenu(get) {
   return h('details', { class: 'menu' },
     h('summary', { class: 'btn ghost' }, 'Export ▾'),
     h('div', { class: 'menu-list' },
-      [['questionnaire', 'questionnaire.yaml — for the DRS agent'], ['yaml', 'YAML (.yaml) — reopens in this app'], ['md', 'Markdown — filled template (.md)'], ['json', 'JSON (.json)'], ['copy', 'Copy YAML to clipboard']]
+      [
+        get().need != null ? ['questionnaire-need', `questionnaire.yaml — this ${get().tpl.repeat?.label || 'need'} only`] : null,
+        ['questionnaire', `questionnaire.yaml — ${A.needCount(get().tpl, get().answers) > 1 ? 'all needs' : 'for the DRS agent'}`],
+        ['yaml', 'YAML (.yaml) — reopens in this app'],
+        ['md', 'Markdown — filled template (.md)'],
+        ['json', 'JSON (.json)'],
+        ['copy', 'Copy YAML to clipboard'],
+      ].filter(Boolean)
         .map(([k, label]) => h('button', { type: 'button', class: 'menu-item', onClick: (e) => { run(k); close(e); } }, label))));
 }
 
@@ -714,7 +742,7 @@ function renderDraftReview(draft, tpl) {
       onClick: () => { A.addNeed(tpl, draft.answers); saveDraft(draft, true, tpl.version); route(); },
     }, `+ Add ${tpl.repeat.label}`));
   }
-  const onNeed = (n) => download(`questionnaire-${n + 1}.yaml`, A.toQuestionnaireYAML(tpl, draft.answers, n), 'application/yaml');
+  const onNeed = (n) => download(needFileName(tpl, draft.answers, n), A.toQuestionnaireYAML(tpl, draft.answers, n), 'application/yaml');
   mount(docView({ tpl, answers: draft.answers, title: labelFor(draft, tpl), status: 'Your answers', subtitle, actions, banner, editBase: base, onNeed }));
 }
 

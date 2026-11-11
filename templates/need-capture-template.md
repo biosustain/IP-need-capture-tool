@@ -241,6 +241,15 @@ Data-science stream, DS. A stream reviewer from the owning team may join for thi
 
 **{#EP4} What must be reported to the funder, and when?** [Reporting]
 
+## Need notes
+
+> **Repeats per:** need
+
+**{#raw_notes} Raw notes for this need** [What was said about this need — verbatim where it matters, quotes kept as spoken]
+
+*What belongs here:* the part of the conversation this need came out of. Anything that applies to
+the whole session goes in the session notes at the end instead.
+
 ## Closing the capture
 
 - [ ] Read back the normalised answer(s) and acceptance criteria; agree on wording.
@@ -249,7 +258,7 @@ Data-science stream, DS. A stream reviewer from the owning team may join for thi
 - [ ] Tell the requester when to expect the DRS draft for confirmation and the next triage date.
 - [ ] Save the answers in the need folder, with the raw notes; the drafting agent and later reviewers read both.
 
-**{#raw_notes} Raw notes from the session** [Verbatim notes; quotes are kept as spoken]
+**{#session_notes} Raw notes for the session** [The interview as a whole — scope, sources, decisions and anything spanning several needs]
 
 ## Interviewing tips
 

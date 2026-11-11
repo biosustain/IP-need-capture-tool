@@ -95,6 +95,17 @@ export function removeNeed(tpl, answers, i) {
   if (!arr.length) arr.push({});
 }
 
+/** `raw_notes` used to mean the session; it now means this need's own notes. */
+export function migrateNotes(tpl, answers) {
+  const closing = answers?.closing_the_capture;
+  if (!closing || closing.session_notes !== undefined) return answers;
+  if (typeof closing.raw_notes === 'string') {
+    closing.session_notes = closing.raw_notes;
+    delete closing.raw_notes;
+  }
+  return answers;
+}
+
 /** Answers saved before the template repeated: fold the group's sections into need 1. */
 export function migrateNeeds(tpl, answers) {
   if (!tpl?.repeat || !answers || Array.isArray(answers[tpl.repeat.key])) return answers;
@@ -221,6 +232,8 @@ export function toJSON(doc) {
 const TOP_LEVEL = ['need_id', 'need_description', 'project_id', 'project', 'portfolio_manager', 'mode', 'date', 'participants'];
 const LIST_FIELDS = new Set(['participants']);
 const LOWER_FIELDS = new Set(['mode']);
+/** Free text that closes the file rather than sitting in the ID-keyed answer map. */
+const TRAILING = ['raw_notes', 'session_notes'];
 
 /** One answer as the hand-off format wants it: scalars, or a list for multi-select. */
 function exportValue(slot, v) {
@@ -265,7 +278,7 @@ export function toQuestionnaireYAML(tpl, answers, needIndex = null) {
   const scoped = scope(tpl, answers, needIndex ?? (tpl.repeat ? 0 : null));
   const out = {};
   const body = {};
-  let notes = '';
+  const notes = {}; // raw_notes for this need, session_notes for the interview
 
   for (const s of askedSections(tpl, scoped)) {
     for (const sl of s.slots) {
@@ -273,7 +286,7 @@ export function toQuestionnaireYAML(tpl, answers, needIndex = null) {
       // Only questions pinned with {#ID} belong in an ID-keyed map; slugged
       // helpers such as the prep checklist are interviewer process, not need data.
       if (!tpl.idKeys?.has(sl.key)) continue;
-      if (sl.key === 'raw_notes') { notes = String(v || ''); continue; }
+      if (TRAILING.includes(sl.key)) { notes[sl.key] = String(v || ''); continue; }
       if (TOP_LEVEL.includes(sl.key)) {
         out[sl.key] = LIST_FIELDS.has(sl.key)
           ? String(v || '').split(',').map((x) => x.trim()).filter(Boolean)
@@ -288,7 +301,7 @@ export function toQuestionnaireYAML(tpl, answers, needIndex = null) {
   const doc = {};
   for (const k of TOP_LEVEL) doc[k] = out[k] ?? (LIST_FIELDS.has(k) ? [] : '');
   doc.answers = body;
-  if (notes.trim()) doc.raw_notes = notes;
+  for (const k of TRAILING) if (notes[k]?.trim()) doc[k] = notes[k];
   return dump(doc, { lineWidth: -1, noRefs: true });
 }
 
