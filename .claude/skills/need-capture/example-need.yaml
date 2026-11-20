@@ -1,0 +1,63 @@
+# Need Capture — short form
+# Drafted by the need-capture skill from: Interview transcript, Ivan Pogrebnyakov, 2026-11-04.
+# One need per file. Open it in the app with "Open an answers file" → "Edit a copy".
+template:
+  id: need-capture-short
+meta:
+  app: ip-requirements-app
+  format_version: 1
+  mode: agent
+  source: Interview transcript, Ivan Pogrebnyakov, 2026-11-04 (P5.1 kick-off)
+  drafted_at: '2026-11-20'
+answers:
+  capture_details:
+    project_id: P5.1
+    project: Cell factory engineering for C4 chemical production, Mission 1B
+    portfolio_manager: Ding He (missions portfolio)
+    mode: Agent
+    date: '2026-11-04'
+    participants: Ivan Pogrebnyakov (project lead), Ding He (portfolio manager)
+  needs:
+    - need:
+        need_id: NEED-0003
+        need_description: >-
+          Somewhere to put the raw omics files for P5.1 that is not the M:/O: drive, so the
+          postdoc's analysis reads them from one known location. (Transcript, storage discussion
+          near the end of the session.)
+        C0:
+          a: true
+          b: false
+          c: false
+        C2: >-
+          Large proteomics and transcriptomics files go on the M:/O: drive today, under whatever
+          folder name the person who generated them chose. Nobody outside the group can find them,
+          and the R analysis is pointed at a local copy. This unblocks running the omics analysis
+          on a shared, citable location rather than on someone's copy.
+        C5: ''
+        C6: ''
+        C7: >-
+          Needed before the first proteomics batch comes back; the project started 1 October 2026
+          and the exact date was not established in the interview.
+        C11: >-
+          Not the analysis itself (that is a separate need) and not the Benchling sequence records,
+          which stay where they are.
+        F1:
+          instrument: false
+          sharing: false
+          personal: false
+          agent: false
+          programme: false
+        F2: ''
+        raw_notes: |
+          Large omics files would currently go on M:/O: drive. Data catalog not used yet; Ivan to
+          try it on this project and report what is missing. Ding to run a short data catalog intro
+          plus Q&A for the team, likely the third week of November.
+
+          Not established in the interview: the acceptance check (C5) and the tester (C6). Ivan is
+          the obvious first tester, with the postdoc running the R-based omics analysis for anything
+          touching omics — but neither was confirmed, so both are left empty rather than guessed.
+      data_detail:
+        D0: >-
+          Raw proteomics and transcriptomics files from P5.1, plus the fermentation runs they are
+          compared against. No identifier scheme discussed. Catalog tiers were mentioned as the
+          intended home but not decided.

@@ -1,5 +1,15 @@
 [
   {
+    "id": "need-capture-short",
+    "title": "Need Capture — short form",
+    "description": "One screen per need. Ten questions that a DRS can actually be drafted from, with the stream detail left to the specification step. Use this for most captures; the long form is for when a stream reviewer is in the room.",
+    "file": "templates/need-capture-short.md",
+    "version": "eb44510a",
+    "sections": 6,
+    "questions": 21,
+    "order": 0
+  },
+  {
     "id": "need-capture-template",
     "title": "Need Capture Questionnaire",
     "description": "The single instrument for collecting a need, for all three streams and both portfolios. Led by the portfolio manager in a live interview; the answers become a DRS.",

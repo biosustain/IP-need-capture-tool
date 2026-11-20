@@ -39,6 +39,8 @@ vendor/js-yaml.mjs           js-yaml 4.2.0
 config.json                  site settings (title, organisation, contact email)
 templates/                   needs statement (served) + specification shape + generated index.json
 scripts/build-template-index.mjs   regenerates templates/index.json
+scripts/validate-need-yaml.mjs     checks a need file before it is opened in the app
+.claude/skills/need-capture/       agent skill: free text -> one need file per need
 .github/workflows/pages.yml  deploys the site to GitHub Pages
 LICENSE                      MIT
 ```
@@ -112,6 +114,72 @@ Keep each need as small as it can be while still standing on its own — one obs
 tester, one acceptance check. The review page flags the shapes that usually mean two needs wearing
 one coat: a routing answer spanning several streams, no acceptance check, no stated scope boundary,
 no named tester. Those notes are advisory and never block anything.
+
+## Two need forms: short and long
+
+The same need can be captured with either of two templates. They share question IDs, so a file from
+one is readable beside a file from the other, and both export the same `questionnaire.yaml`.
+
+| | **Need Capture — short form** | **Need Capture Questionnaire** |
+| --- | --- | --- |
+| File | `templates/need-capture-short.md` | `templates/need-capture-template.md` |
+| Questions per need | 11, plus one paragraph per stream selected | about 45 |
+| Fits on | one screen | eleven steps |
+| Use it | for most captures, and for anything an agent drafts | when a stream reviewer is in the room and the detail is being settled there and then |
+
+**What the short form asks per need.** `need_id` and `need_description` (the need in one sentence,
+with where it came from), `C0` routing, `C2` what happens today and what this unblocks, `C5` one
+acceptance check, `C6` the tester, `C7` when it is needed and what happens if it slips, `C11` what
+is out of scope, `F1` five flags, `F2` one line on any flag that is ticked, and `raw_notes`. Each
+stream ticked in `C0` adds one paragraph: `D0`, `S0` or `A0`.
+
+**What it drops, and where that work goes instead.**
+
+| Dropped | Why |
+| --- | --- |
+| `C1` (what decision this supports) | folded into `C2`, which now asks for the cost today *and* what it unblocks — one field, both halves of the rationale |
+| `C3` (why do you need that) | that is the need itself; it is `need_description`, not a separate answer |
+| `C8` (who else needs the same thing) | CI already posts the five nearest requirements and capabilities on every new requirement, and does it better than recall does. The portfolio manager adds `source_projects` at triage. |
+| `C9`, `C10` (agent access, DBTL and lifecycle stages) | classification the DRS drafting agent proposes and the portfolio manager confirms. `C9` survives as one flag in `F1`. |
+| `C4` (producers and consumers) | belongs with the stream detail; answer it in `D0` or `S0` where it is actually used |
+| Modules D, S, A — 20 questions | collapsed to one paragraph each. The 20 questions are specification detail: they are asked at phase 2 by the team that will deliver the thing, not at capture by someone who does not yet know which team that is. |
+| Instruments, Sharing and IP, Personal data, Automation, External programme — 18 questions | collapsed to five checkboxes (`F1`) plus one line (`F2`). The flag is what has to be known early, because it changes who must be in the room; the detail follows the flag. |
+| `session_notes` | the short form captures one need per file, so the session record has nowhere to live. Use the long form for a whole-interview archive. |
+
+The cost of the short form is real and worth stating: a capture that stops at eleven questions
+leaves more for the specification step, so it needs a stream reviewer later rather than earlier. In
+exchange, a need fits on one screen, which is what makes reviewing twenty of them possible.
+
+## From notes to needs: the capture skill
+
+[`.claude/skills/need-capture/`](.claude/skills/need-capture/) turns free text — an interview
+transcript, meeting notes, an email thread, a kick-off summary — into one need file per need, in the
+format the app imports.
+
+```
+transcript, notes, email
+      ↓  /need-capture  (agent skill)
+needs/<project>-NEED-0001-need.yaml       one need per file, app import format
+      ↓  node scripts/validate-need-yaml.mjs needs/*.yaml
+      ↓  app: Open an answers file -> Edit a copy
+      ↓  app: Export -> questionnaire.yaml
+the DRS drafting agent
+```
+
+The skill's rule is that an empty field beats a plausible invention: a tester, a date or an
+acceptance check that nobody actually stated is left blank and named as an open question, so the
+follow-up conversation knows what to ask. Splitting is the other half of its job — one outcome, one
+tester, one acceptance check per file.
+
+`scripts/validate-need-yaml.mjs` checks a file before anyone opens it. **Errors** are keys the app
+would silently drop into "Other answers"; **warnings** are for the human reviewer — an empty `C5` is
+often the honest result of a conversation that never got there. `--questionnaire` prints the DRS
+hand-off the app would export, which is the quickest way to see whether a need reads sensibly on its
+own.
+
+```bash
+node scripts/validate-need-yaml.mjs --questionnaire .claude/skills/need-capture/example-need.yaml
+```
 
 ## From needs to requirements
 
