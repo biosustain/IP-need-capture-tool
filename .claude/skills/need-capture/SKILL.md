@@ -95,56 +95,55 @@ Name it `<project_id>-<need_id>-need.yaml`, for example `P5.1-NEED-0003-need.yam
 with anything unsafe for a filename replaced by `-`. Ask where to put them;
 default to a `needs/` directory beside the source, and say where they went.
 
-The shape, exactly — see [`example-need.yaml`](example-need.yaml) for a filled one:
+**Start from the generated skeleton, never from memory:**
+
+```bash
+node scripts/validate-need-yaml.mjs --skeleton > needs/<project_id>-NEED-0001-need.yaml
+```
+
+It prints a blank file with every key in place and **every question written in as a
+comment**, straight from the template:
 
 ```yaml
-# Need Capture — short form
-# Drafted by the need-capture skill from: <source>.
-template:
-  id: need-capture-short
-meta:
-  app: ip-requirements-app
-  format_version: 1
-  mode: agent
-  source: <what you read, precisely enough to find it again>
-  drafted_at: 'YYYY-MM-DD'
 answers:
   capture_details:
+    # project_id — Project ID
     project_id: ''
-    project: ''
-    portfolio_manager: ''
-    mode: Agent
-    date: 'YYYY-MM-DD'
-    participants: ''        # comma separated; the app splits it on export
+    …
   needs:
     - need:
-        need_id: NEED-0001
+        # need_description — The need, in one sentence
         need_description: ''
+        # C0 — When this is done, what should exist that does not exist today?
+        #     a = Data captured or described in a standard way
+        #     b = A tool, service or connection
+        #     c = An answer, analysis or model
         C0: { a: false, b: false, c: false }
-        C2: ''
+        # C5 — How will you know it works? One concrete check.
         C5: ''
-        C6: ''
-        C7: ''
-        C11: ''
-        F1: { instrument: false, sharing: false, personal: false, agent: false, programme: false }
-        F2: ''
-        raw_notes: |
-          …
-      data_detail:        # only when C0.a — omit the section otherwise
+      data_detail:   # only when C0 includes a
+        # D0 — What is being described, and against what?
         D0: ''
-      software_detail:    # only when C0.b
-        S0: ''
-      analysis_detail:    # only when C0.c
-        A0: ''
 ```
+
+See [`example-need.yaml`](example-need.yaml) for a filled one.
+
+The questions live in comments rather than in the data because the app's import
+reads `key: value`; an answer written as `{question: …, answer: …}` would fail to
+load. Comments give a reviewer the question beside the answer and cost the import
+nothing. The app's own **Export → questionnaire.yaml** is where question and
+answer become structured fields, for the DRS agent.
 
 Rules that keep the file importable:
 
-- Keys are exactly as above. Anything else lands under "Other answers" in the app and is lost to the hand-off.
+- Keys are exactly as the skeleton prints them. Anything else lands under "Other answers" in the app and is lost to the hand-off.
+- Keep the `# <key> — <question>` comment above every answer you fill in, including the ones you leave empty. Do not reword them: they are the questions as asked.
 - `answers.needs` is a list, with **one entry** per file.
 - Unanswered means `''`, never a guess, never `null`, never "TBD".
+- Omit a stream section whose box is not ticked in `C0`.
 - Do not write `template.version`. It changes whenever the template is edited, and a stale value makes the app flag the file as out of date.
 - Keep quotes as spoken in `raw_notes`. Normalise wording only in `need_description`.
+- Cite the source in every answer you can: a timestamp like `[15:28–16:20]`, a page, a line. A reviewer should be able to check any sentence in under a minute.
 
 ### 5. Validate before you hand anything over
 
@@ -155,8 +154,11 @@ node scripts/validate-need-yaml.mjs needs/*.yaml
 Errors mean the app would silently drop something — fix them. Warnings are for
 the human reviewer: an empty `C5` or `C6` is often the correct output of a
 conversation that never got that far, and the validator says so rather than
-failing. Add `--questionnaire` to print the DRS hand-off the app would export
-from the file, which is a good way to check that a need reads sensibly on its own.
+failing. One warning is yours to fix, not the reviewer's: *no question written
+above these answers* means a `# <key> — <question>` comment is missing.
+
+Add `--questionnaire` to print the DRS hand-off the app would export from the
+file, which is a good way to check that a need reads sensibly on its own.
 
 ### 6. Report, and say what is missing
 

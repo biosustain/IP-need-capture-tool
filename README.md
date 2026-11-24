@@ -166,6 +166,20 @@ needs/<project>-NEED-0001-need.yaml       one need per file, app import format
 the DRS drafting agent
 ```
 
+Each answer carries its question as a `# <key> — <question>` comment above it, so a reviewer reads
+the file without the template open beside it:
+
+```yaml
+        # C5 — How will you know it works? One concrete check.
+        C5: ''
+```
+
+The questions are comments rather than data because the app's import reads `key: value`; an answer
+written as `{question: …, answer: …}` would not load. `--skeleton` writes a blank file with those
+comments generated from the template, so they cannot drift from the questions actually being asked,
+and the validator warns about any answer missing one. Structured question-and-answer pairs are what
+the app's own **Export → questionnaire.yaml** produces for the DRS agent.
+
 The skill's rule is that an empty field beats a plausible invention: a tester, a date or an
 acceptance check that nobody actually stated is left blank and named as an open question, so the
 follow-up conversation knows what to ask. Splitting is the other half of its job — one outcome, one

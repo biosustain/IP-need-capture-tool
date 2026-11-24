@@ -3,12 +3,18 @@
 //
 //   node scripts/validate-need-yaml.mjs <file.yaml> [more.yaml ...]
 //   node scripts/validate-need-yaml.mjs --questionnaire <file.yaml>   # print the DRS hand-off
+//   node scripts/validate-need-yaml.mjs --skeleton [template-id]      # blank file, questions included
 //
 // Errors (exit 1) are things that would be silently dropped or shown under
 // "Other answers" when the file is opened: a missing answers block, a key the
 // template does not define, a checkbox option that does not exist.
 // Warnings (exit 0) are things a human reviewer should look at: no acceptance
 // check, no tester, a stream ticked with no detail written for it.
+//
+// Every answer carries its question as a `# <key> — <question>` comment above it.
+// The app ignores comments, so the file stays importable; a reviewer reads the
+// file without the template beside it. --skeleton writes those comments from the
+// template, so they cannot drift from the questions actually being asked.
 
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -20,10 +26,12 @@ import { toQuestionnaireYAML, getValue, isFilled, scope } from '../js/answers.js
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const wantQuestionnaire = args.includes('--questionnaire');
+const wantSkeleton = args.includes('--skeleton');
 const files = args.filter((a) => !a.startsWith('--'));
 
-if (!files.length) {
+if (!files.length && !wantSkeleton) {
   console.error('usage: node scripts/validate-need-yaml.mjs [--questionnaire] <file.yaml> ...');
+  console.error('       node scripts/validate-need-yaml.mjs --skeleton [template-id]');
   process.exit(2);
 }
 
@@ -37,6 +45,75 @@ function template(id) {
   return templates.get(id);
 }
 
+/** The question for one slot, as the template puts it. */
+const questionOf = (slot) => slot.item.question || slot.item.label || slot.key;
+
+/** `# <key> — <question>`, plus one line per option on a checkbox list. */
+function commentFor(slot, pad) {
+  const lines = [`${pad}# ${slot.key} — ${questionOf(slot)}`];
+  if (slot.kind === 'checklist') {
+    for (const o of slot.item.options) lines.push(`${pad}#     ${o.key} = ${o.label.replace(/^\([a-z]\)\s*/, '')}`);
+  }
+  return lines.join('\n');
+}
+
+/** A blank need file with every question written in as a comment. */
+function skeleton(tpl) {
+  const blank = (slot, pad) => {
+    if (slot.kind === 'checklist') return `{ ${slot.item.options.map((o) => `${o.key}: false`).join(', ')} }`;
+    if (slot.key === 'raw_notes') return `|\n${pad}  what was said, and what was never established`;
+    if (slot.key === 'mode') return 'Agent';
+    if (slot.key === 'need_id') return 'NEED-0001';
+    if (slot.key === 'date') return "'YYYY-MM-DD'";
+    return "''";
+  };
+  /** `pad` indents the section key; its answers sit two spaces deeper. */
+  const sectionBlock = (s, pad, firstKeyPrefix = '') => {
+    const slots = s.slots.filter((sl) => tpl.idKeys.has(sl.key));
+    if (!slots.length) return [];
+    const inner = pad + '  ';
+    const out = [`${firstKeyPrefix || pad}${s.key}:${s.when ? `   # only when ${s.when.src}` : ''}`];
+    for (const sl of slots) {
+      out.push(commentFor(sl, inner));
+      out.push(`${inner}${sl.key}: ${blank(sl, inner)}`);
+    }
+    return out;
+  };
+
+  const r = tpl.repeat;
+  const lines = [
+    `# ${tpl.title}`,
+    '# Drafted by the need-capture skill from: <source>.',
+    '# One need per file. Comments carry the question; the app ignores them.',
+    'template:',
+    `  id: ${tpl.id}`,
+    'meta:',
+    '  app: ip-requirements-app',
+    '  format_version: 1',
+    '  mode: agent',
+    '  source: <what you read, precisely enough to find it again>',
+    "  drafted_at: 'YYYY-MM-DD'",
+    'answers:',
+  ];
+  for (const s of tpl.sections) {
+    if (r && r.sections.includes(s)) continue;
+    lines.push(...sectionBlock(s, '  '));
+  }
+  if (r) {
+    lines.push(`  ${r.key}:`);
+    r.sections.forEach((s, i) => {
+      const block = sectionBlock(s, '      ', i === 0 ? '    - ' : '      ');
+      lines.push(...block);
+    });
+  }
+  return lines.join('\n') + '\n';
+}
+
+if (wantSkeleton) {
+  process.stdout.write(skeleton(template(files[0] || DEFAULT_TEMPLATE)));
+  process.exit(0);
+}
+
 let errors = 0;
 let warnings = 0;
 const err = (m) => { errors++; console.log(`  ✗ ${m}`); };
@@ -46,8 +123,11 @@ const ok = (m) => console.log(`  · ${m}`);
 for (const file of files) {
   console.log(`\n${file}`);
   const errorsBefore = errors;
-  let doc;
-  try { doc = load(readFileSync(file, 'utf8')); } catch (e) { err(`not valid YAML: ${e.message.split('\n')[0]}`); continue; }
+  let doc, raw;
+  try { raw = readFileSync(file, 'utf8'); doc = load(raw); } catch (e) { err(`not valid YAML: ${e.message.split('\n')[0]}`); continue; }
+  // `# <key> — <question>` above an answer is how the file carries its questions.
+  const documented = new Set([...raw.matchAll(/^[ \t]*#[ \t]*([A-Za-z_][\w]*)[ \t]*[—–-]/gm)].map((m) => m[1]));
+  const undocumented = [];
   if (!doc || typeof doc !== 'object' || !doc.answers || typeof doc.answers !== 'object') {
     err('no "answers:" block — the app would refuse this file');
     continue;
@@ -72,6 +152,7 @@ for (const file of files) {
     for (const [k, v] of Object.entries(value || {})) {
       const sl = slots.get(k);
       if (!sl) { err(`${where}: unknown question "${key}.${k}"`); continue; }
+      if (!documented.has(k) && !undocumented.includes(k)) undocumented.push(k);
       if (sl.kind === 'checklist') {
         if (v && typeof v === 'object' && !Array.isArray(v)) {
           const opts = new Set(sl.item.options.map((o) => o.key));
@@ -129,6 +210,9 @@ for (const file of files) {
 
   for (const k of ['project_id', 'project', 'date']) {
     if (!String(doc.answers?.capture_details?.[k] ?? '').trim()) warn(`capture_details.${k} is empty`);
+  }
+  if (undocumented.length) {
+    warn(`no question written above ${undocumented.length === 1 ? 'this answer' : 'these answers'}: ${undocumented.join(', ')}. Run --skeleton and copy the \`# <key> — <question>\` comments, so the file reads without the template.`);
   }
   if (errors === errorsBefore) ok('shape is valid; the app will open this file');
 

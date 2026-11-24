@@ -1,6 +1,7 @@
 # Need Capture — short form
 # Drafted by the need-capture skill from: Interview transcript, Ivan Pogrebnyakov, 2026-11-04.
-# One need per file. Open it in the app with "Open an answers file" → "Edit a copy".
+# One need per file. Comments carry the question; the app ignores them.
+# Open it in the app with "Open an answers file" → "Edit a copy".
 template:
   id: need-capture-short
 meta:
@@ -11,43 +12,59 @@ meta:
   drafted_at: '2026-11-20'
 answers:
   capture_details:
+    # project_id — Project ID
     project_id: P5.1
+    # project — Project
     project: Cell factory engineering for C4 chemical production, Mission 1B
+    # portfolio_manager — Portfolio manager
     portfolio_manager: Ding He (missions portfolio)
+    # mode — Mode
     mode: Agent
+    # date — Date
     date: '2026-11-04'
+    # participants — Participants
     participants: Ivan Pogrebnyakov (project lead), Ding He (portfolio manager)
   needs:
     - need:
+        # need_id — Need ID
         need_id: NEED-0003
+        # need_description — The need, in one sentence
         need_description: >-
           Somewhere to put the raw omics files for P5.1 that is not the M:/O: drive, so the
-          postdoc's analysis reads them from one known location. (Transcript, storage discussion
-          near the end of the session.)
-        C0:
-          a: true
-          b: false
-          c: false
+          postdoc's analysis reads them from one known location. [27:35–29:19]
+        # C0 — When this is done, what should exist that does not exist today?
+        #     a = Data captured or described in a standard way
+        #     b = A tool, service or connection
+        #     c = An answer, analysis or model
+        C0: { a: true, b: false, c: false }
+        # C2 — What happens today, and what will this make possible?
         C2: >-
           Large proteomics and transcriptomics files go on the M:/O: drive today, under whatever
-          folder name the person who generated them chose. Nobody outside the group can find them,
-          and the R analysis is pointed at a local copy. This unblocks running the omics analysis
-          on a shared, citable location rather than on someone's copy.
+          folder name the person who generated them chose [28:37–28:52]. Nobody outside the group
+          can find them, and the R analysis is pointed at a local copy. This unblocks running the
+          omics analysis on a shared location rather than on someone's copy.
+        # C5 — How will you know it works? One concrete check.
         C5: ''
+        # C6 — Who on your side will test it?
         C6: ''
+        # C7 — When do you need it, and what happens if it slips?
         C7: >-
-          Needed before the first proteomics batch comes back; the project started 1 October 2026
-          and the exact date was not established in the interview.
+          Deferred by the requester: "for now, we're not generating it yet... maybe a bit later on,
+          we can discuss on how to store and access the data" [28:56–29:19]. No date.
+        # C11 — What is explicitly out of scope?
         C11: >-
-          Not the analysis itself (that is a separate need) and not the Benchling sequence records,
-          which stay where they are.
-        F1:
-          instrument: false
-          sharing: false
-          personal: false
-          agent: false
-          programme: false
-        F2: ''
+          Not the analysis itself, and not the Benchling sequence records, which stay where they
+          are [27:35–28:07].
+        # F1 — Does any of this apply?
+        #     instrument = An instrument or robot produces or consumes the data
+        #     sharing = External partners, publication, embargo or company data
+        #     personal = Human samples or participant data
+        #     agent = An agent should be able to trigger, read or write this without a person
+        #     programme = This comes from an externally funded programme or consortium
+        F1: { instrument: true, sharing: false, personal: false, agent: false, programme: false }
+        # F2 — Anything the boxes above need in one line?
+        F2: The files come off the analytics instruments; which ones, and in what formats, was not discussed.
+        # raw_notes — Notes for this need
         raw_notes: |
           Large omics files would currently go on M:/O: drive. Data catalog not used yet; Ivan to
           try it on this project and report what is missing. Ding to run a short data catalog intro
@@ -56,7 +73,8 @@ answers:
           Not established in the interview: the acceptance check (C5) and the tester (C6). Ivan is
           the obvious first tester, with the postdoc running the R-based omics analysis for anything
           touching omics — but neither was confirmed, so both are left empty rather than guessed.
-      data_detail:
+      data_detail:   # only when C0 includes a
+        # D0 — What is being described, and against what?
         D0: >-
           Raw proteomics and transcriptomics files from P5.1, plus the fermentation runs they are
           compared against. No identifier scheme discussed. Catalog tiers were mentioned as the
