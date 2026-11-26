@@ -11,10 +11,10 @@
   },
   {
     "id": "need-capture-template",
-    "title": "Need Capture Questionnaire",
+    "title": "Need Capture - long form",
     "description": "The single instrument for collecting a need, for all three streams and both portfolios. Led by the portfolio manager in a live interview; the answers become a DRS.",
     "file": "templates/need-capture-template.md",
-    "version": "b95b6164",
+    "version": "0527536c",
     "sections": 16,
     "questions": 62,
     "order": 1

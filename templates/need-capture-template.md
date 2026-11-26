@@ -1,10 +1,10 @@
 ---
-title: Need Capture Questionnaire
+title: Need Capture - long form
 description: The single instrument for collecting a need, for all three streams and both portfolios. Led by the portfolio manager in a live interview; the answers become a DRS.
 order: 1
 ---
 
-# Need Capture Questionnaire
+# Need Capture - long form
 
 > The questionnaire is the single instrument for collecting requirements, for all three streams and both portfolios. Every question has an ID and names the DRS field it fills, so the DRS drafting agent can turn the answers into DRS files directly. The portfolio manager (Ding for missions, Lea for external programmes) owns each questionnaire.
 
