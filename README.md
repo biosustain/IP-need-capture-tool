@@ -1,4 +1,4 @@
-# Informatics Platform – Requirements Questionnaires
+# Informatics Platform – Need Capture
 
 A small static web app for collecting project data **needs** from clients of the BRIGHT
 Informatics Platform. Questionnaires are plain Markdown templates; clients answer them section by
@@ -83,7 +83,8 @@ List one contact and the dialog names them directly; list several and the client
 are working with. A single `"contactEmail": "..."` is still honoured as a fallback.
 
 Share a direct link to one questionnaire with `?template=<id>`, for example
-`https://biosustain.github.io/IP-need-capture-tool/?template=requirements`.
+`https://biosustain.github.io/IP-need-capture-tool/?template=need-capture-short`. The id is the
+template's filename without `.md`, as listed in [`templates/index.json`](templates/index.json).
 
 ## Several questionnaires at once
 
@@ -348,33 +349,36 @@ To add a template:
 ## Answer file format
 
 ```yaml
-# Project Data Requirements
+# Need Capture — short form
 template:
-  id: requirements
-  title: Project Data Strategy and Requirements
-  version: 7ca7bc7e            # hash of the template file (or front-matter `version`)
-  source: templates/requirements.md
+  id: need-capture-short
+  title: Need Capture — short form
+  version: eb44510a            # hash of the template file (or front-matter `version`)
+  source: templates/need-capture-short.md
 meta:
-  app: ip-requirements-app
+  app: ip-requirements-app     # the file format's id, not the repository's — unchanged by the rename
   format_version: 1
-  exported_at: '2026-10-22T15:22:02.350Z'
+  exported_at: '2026-11-24T15:22:02.350Z'
   submitted_at: '…'            # on submission
   submitted_by: { name: …, email: … }
 answers:
-  document_control:
-    project_campaign: Pioreactor fleet consolidation (PRJ-042)
-    status: In review
-  requirements:
-    requirements:
-      - id: REQ-01
-        requirement: The service shall ingest Pioreactor exports nightly.
-        priority: P1
-        status: Proposed
-  acceptance_and_review:
-    acceptance_and_review:
-      - reviewer: Informatics Platform
-        decision_comments: { choice: Investigate, note: Check data lake quota }
+  capture_details:
+    project_id: P5.1
+    project: Cell factory engineering for a C4 chemical, Mission 1B
+    date: '2026-11-04'
+  needs:                                           # the repeated block, one entry per need
+    - need:
+        need_id: NEED-0001
+        C0: { a: true, b: false, c: false }        # checkbox list: option -> ticked
+        C5: Given a project, all runs' metadata under it are returned.
+        C6: Felix Weichselbaum
+      data_detail:                                 # only present when C0 includes a
+        D0: Which entities, how they are identified, and against which standard.
 ```
+
+Two shapes this example does not show, because the short form has no question of either kind: a
+3+ column table exports as a list of row objects, and a `[A / B; note]` choice exports as
+`{ choice: …, note: … }`.
 
 Unanswered questions are exported as empty strings, so open items stay visible.
 
