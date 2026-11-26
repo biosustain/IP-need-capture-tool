@@ -121,7 +121,7 @@ no named tester. Those notes are advisory and never block anything.
 The same need can be captured with either of two templates. They share question IDs, so a file from
 one is readable beside a file from the other, and both export the same `questionnaire.yaml`.
 
-| | **Need Capture — short form** | **Need Capture Questionnaire** |
+| | **Need Capture — short form** | **Need Capture - long form** |
 | --- | --- | --- |
 | File | `templates/need-capture-short.md` | `templates/need-capture-template.md` |
 | Questions per need | 11, plus one paragraph per stream selected | about 45 |

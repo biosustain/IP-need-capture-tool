@@ -1,6 +1,6 @@
 ---
 title: Project Data Needs Statement
-description: Superseded by the Need Capture Questionnaire, which follows the Part 1 workflow and Part 3 questionnaire. Kept so questionnaires started before the change still open.
+description: Superseded by the Need Capture - long form, which follows the Part 1 workflow and Part 3 questionnaire. Kept so questionnaires started before the change still open.
 hidden: true
 ---
 

@@ -5,7 +5,7 @@ import * as A from './answers.js';
 // ---------------------------------------------------------------- config & state
 
 const DEFAULT_CONFIG = {
-  title: 'Informatics Platform · Requirements',
+  title: 'Informatics Platform - Need Capture',
   organization: 'BRIGHT',
   contactEmail: '',   // single address; `contacts` takes precedence when set
   contacts: [],       // [{ name, email }] — the client picks one to send to
@@ -294,7 +294,7 @@ async function renderHome() {
       h('p', { class: 'lede' }, 'Pick a questionnaire and answer it section by section. Your answers are saved in this browser as you go, so you can stop and come back — and you can keep one going per project. When you are done, review your answers and send them to us, or export a copy as YAML or Markdown.')),
     drafts.length ? h('h2', { class: 'label-heading' }, 'In progress') : null,
     drafts.length ? h('div', { class: 'q-list' }, drafts.map((d) => draftRow(d, tpls.get(d.templateId)))) : null,
-    h('h2', { class: 'label-heading' }, drafts.length ? 'Start a new questionnaire' : 'Questionnaires'),
+    h('h2', { class: 'label-heading' }, drafts.length ? 'Capture new needs' : 'Questionnaires'),
     h('div', { class: 'tpl-grid' }, cards),
     h('div', { class: 'card open-card' },
       h('div', {},
