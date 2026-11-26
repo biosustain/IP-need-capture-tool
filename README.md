@@ -58,11 +58,11 @@ on `file://`.
 
 ## Publish on GitHub Pages
 
-The repository is `biosustain/informatics-platform-requirements`.
+The repository is `biosustain/IP-need-capture-tool`.
 
 1. In **Settings → Pages**, set **Source** to **GitHub Actions**.
 2. Push to `main`. The workflow rebuilds `templates/index.json` and deploys the site to
-   `https://biosustain.github.io/informatics-platform-requirements/`.
+   `https://biosustain.github.io/IP-need-capture-tool/`.
 
 > GitHub Actions minutes are billed for private repositories, and a Pages site built from a private
 > repository on the organisation's Team plan is still publicly reachable — access-controlled Pages
@@ -83,7 +83,7 @@ List one contact and the dialog names them directly; list several and the client
 are working with. A single `"contactEmail": "..."` is still honoured as a fallback.
 
 Share a direct link to one questionnaire with `?template=<id>`, for example
-`https://biosustain.github.io/informatics-platform-requirements/?template=requirements`.
+`https://biosustain.github.io/IP-need-capture-tool/?template=requirements`.
 
 ## Several questionnaires at once
 
