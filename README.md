@@ -16,8 +16,8 @@ The app is the first step of a two-stage workflow — see
   project. Each is listed under **In progress** with its own progress and last-saved time.
 - **Send your answers** – downloads the YAML and lets the client pick which team member to email
   it to.
-- **Export and import in bulk** – every questionnaire in this browser leaves as one bundle file,
-  and comes back the same way, so captures can move between browsers, machines and people.
+- **Export, import and delete in bulk** – tick the questionnaires in this browser and move them all
+  as one bundle file, bring them back the same way, or clear them out together.
 
 Everything runs in the browser. There is no server, no account and no network call beyond loading
 the site itself: answers never leave the client's machine until they choose to send the file.
@@ -109,12 +109,13 @@ are **per browser and per device**: they are not shared between people, do not f
 machine, and are lost if the browser's site data is cleared. **Export and import in bulk** is how
 they get out, and back.
 
-## Export and import in bulk
+## Export, import and delete in bulk
 
-The start page moves whole sets of captures in one step, under **Move captures between browsers**.
+The start page acts on whole sets of captures in one step. Every questionnaire under *In progress*
+carries a tick box, and the bar above the list selects or deselects them together; **Export** and
+**Delete** both act on whatever is ticked.
 
-**Exporting.** Every questionnaire under *In progress* carries a tick box, and the bar above the
-list selects or deselects them together. **Export** then writes the ticked ones:
+**Exporting.** **Export** writes the ticked ones:
 
 | | What it writes | Read back by |
 | --- | --- | --- |
@@ -139,6 +140,13 @@ so a backup restored onto its own machine — that dialog asks what to do:
 Anything that names no template is reported and skipped rather than guessed at. A
 `questionnaire.yaml` written for the DRS agent cannot be imported: it is a one-way hand-off format
 keyed by question ID, not the app's round-trippable one.
+
+**Deleting.** **Delete** clears the ticked questionnaires out of this browser together, which is
+how a shared or borrowed machine is left clean after a capture session. Because these answers exist
+in this browser and nowhere else, it confirms first: the dialog names every questionnaire it is
+about to take, with how much of each is answered and when it was last saved, and offers **Download
+a backup first** — the same bundle file, of exactly those captures, which imports straight back.
+Deleting one at a time is still in each row's `⋯` menu.
 
 This is also the backup story. Nothing is uploaded anywhere — the file lands in the browser's
 downloads folder, and where it goes next is the client's choice.

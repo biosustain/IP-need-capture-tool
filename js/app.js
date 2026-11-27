@@ -375,6 +375,11 @@ function refreshBulkBar(drafts) {
     b.textContent = `Export ${n === drafts.length ? 'all' : n} ▾`;
     b.classList.toggle('disabled', n === 0);
   });
+  const del = document.querySelector('[data-bulk-delete]');
+  if (del) {
+    del.textContent = n === drafts.length ? `Delete all ${n}` : `Delete ${n}`;
+    del.disabled = n === 0;
+  }
   const box = document.querySelector('[data-select-all]');
   if (box) { box.checked = n > 0; box.indeterminate = n > 0 && n < drafts.length; }
 }
@@ -391,7 +396,66 @@ function bulkBar(drafts, tpls) {
   });
   return h('div', { class: 'bulk-bar' },
     h('label', { class: 'bulk-select' }, selectAll, h('span', { 'data-bulk-count': true }, `All ${drafts.length} selected`)),
-    h('div', { class: 'bulk-actions' }, exportBundleMenu(drafts, tpls)));
+    h('div', { class: 'bulk-actions' },
+      h('button', {
+        class: 'btn danger', type: 'button', 'data-bulk-delete': true,
+        onClick: () => openDeleteDialog(selectedDrafts(drafts), tpls),
+      }, `Delete all ${drafts.length}`),
+      exportBundleMenu(drafts, tpls)));
+}
+
+/**
+ * Deleting several at once is the one action here that destroys work, and these
+ * answers exist in this browser and nowhere else. So it names what it is about to
+ * take, and offers the backup before it does rather than after.
+ */
+function openDeleteDialog(picked, tpls) {
+  if (!picked.length) return;
+  const n = picked.length;
+  const dlg = h('dialog', { class: 'dialog wide', 'aria-labelledby': 'delete-title' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.addEventListener('cancel', () => setTimeout(() => dlg.remove(), 0));
+
+  const backup = () => {
+    const docs = picked.map((d) => {
+      const tpl = tpls.get(d.templateId);
+      return tpl ? A.buildBundleDocument(tpl, d.answers, d) : A.buildRawBundleDocument(d);
+    });
+    download(`need-capture-${n}-questionnaires-${new Date().toISOString().slice(0, 10)}.yaml`,
+      A.toBundleYAML(A.buildBundle(docs)), 'application/yaml');
+    toast('Backup downloaded — it imports back here');
+  };
+
+  dlg.append(h('div', { class: 'dialog-body' },
+    h('h2', { id: 'delete-title' }, `Delete ${n} questionnaire${n === 1 ? '' : 's'}?`),
+    h('ul', { class: 'import-list' }, picked.map((d) => {
+      const tpl = tpls.get(d.templateId);
+      const prog = tpl ? A.progress(tpl, d.answers) : null;
+      const done = prog ? prog.reduce((a, p) => a + p.done, 0) : 0;
+      return h('li', {},
+        h('span', { class: 'import-name' }, labelFor(d, tpl)),
+        done ? h('span', { class: 'badge' }, `${done} answered`) : null,
+        h('span', { class: 'import-tpl small muted' },
+          tpl?.title || state.index.find((t) => t.id === d.templateId)?.title || d.templateId,
+          d.updatedAt ? ` · last saved ${fmtTime(d.updatedAt)}` : ''));
+    })),
+    h('div', { class: 'note' }, 'Their answers are saved in this browser only. Deleting them here deletes them everywhere, and it cannot be undone.'),
+    h('div', { class: 'dialog-actions' },
+      h('button', { class: 'btn', type: 'button', onClick: close }, 'Cancel'),
+      h('button', { class: 'btn', type: 'button', onClick: backup }, 'Download a backup first'),
+      h('button', {
+        class: 'btn danger solid', type: 'button',
+        onClick: () => { close(); deleteDrafts(picked.map((d) => d.id)); },
+      }, `Delete ${n}`))));
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+function deleteDrafts(ids) {
+  for (const id of ids) deleteDraft(id);
+  selected.clear();
+  toast(`${ids.length} questionnaire${ids.length === 1 ? '' : 's'} deleted`);
+  route();
 }
 
 function exportBundleMenu(drafts, tpls) {
