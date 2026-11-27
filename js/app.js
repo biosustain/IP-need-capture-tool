@@ -119,6 +119,7 @@ async function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   const [view, a, b] = parts;
   window.scrollTo(0, 0);
+  document.title = state.config.title; // doc views set their own below
   try {
     // #/t/<templateId>[/new] — resolve to one questionnaire, then swap the URL for it.
     if (view === 't' && a) {
@@ -254,7 +255,45 @@ function firstAnswerText(tpl, answers) {
     .find((v) => typeof v === 'string' && v.trim()) || '';
 }
 
-const labelFor = (d, tpl) => d.title?.trim() || (tpl ? firstAnswerText(tpl, d.answers).trim() : '') || 'Untitled';
+/** One answer by key, inside need `n` (or at capture level when `n` is null). */
+function answerAt(tpl, answers, n, key) {
+  const sc = A.scope(tpl, answers, n);
+  for (const s of tpl.sections) {
+    const sl = s.slots.find((x) => x.key === key);
+    if (sl) return String(A.choiceText(A.getValue(sc, s, sl)) || '').trim();
+  }
+  return '';
+}
+
+const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+
+/** `NEED-0003 — One row per sample…`: what tells two single-need files apart. */
+function needLabel(tpl, answers, n) {
+  const id = answerAt(tpl, answers, n, 'need_id');
+  const sc = A.scope(tpl, answers, n);
+  // `need_description` by name, else the first thing answered inside the need.
+  const text = answerAt(tpl, answers, n, 'need_description')
+    || (tpl.repeat?.sections || [])
+      .flatMap((s) => s.slots.map((sl) => A.choiceText(A.getValue(sc, s, sl))))
+      .find((v) => typeof v === 'string' && v.trim() && v.trim() !== id) || '';
+  return [id, text && clip(text.replace(/\s+/g, ' ').trim(), 72)].filter(Boolean).join(' — ');
+}
+
+/**
+ * What to call a document. A file holding one need is named after that need —
+ * nineteen files all called "Need Capture — short form" tell you nothing.
+ */
+function docLabel(tpl, answers) {
+  if (A.needCount(tpl, answers) === 1) {
+    const one = needLabel(tpl, answers, 0);
+    if (one) return one;
+  }
+  return answerAt(tpl, answers, null, 'project')
+    || answerAt(tpl, answers, null, 'project_id')
+    || firstAnswerText(tpl, answers).trim();
+}
+
+const labelFor = (d, tpl) => d.title?.trim() || (tpl ? docLabel(tpl, d.answers).trim() : '') || 'Untitled';
 const hasContent = (tpl, d) => d && A.progress(tpl, d.answers).some((p) => p.done > 0);
 
 // ---------------------------------------------------------------- home
@@ -714,10 +753,13 @@ document.addEventListener('click', (e) => {
 /** Per-need banner on the review document: warnings, and its own hand-off file. */
 function needHeader(tpl, answers, n, editBase, onNeed) {
   const warn = A.needWarnings(tpl, answers, n);
+  const ordinal = `${cap1(tpl.repeat.label)} ${n + 1}`;
+  const label = needLabel(tpl, answers, n);
   return h('section', { class: 'need-head' },
     h('div', { class: 'need-head-row' },
-      h('h2', {}, `${cap1(tpl.repeat.label)} ${n + 1}`),
+      h('h2', {}, label || ordinal),
       onNeed ? h('button', { class: 'btn small', type: 'button', onClick: () => onNeed(n) }, 'questionnaire.yaml') : null),
+    label ? h('p', { class: 'muted small' }, ordinal) : null,
     warn.length ? h('ul', { class: 'need-warnings' }, warn.map((w) => h('li', {}, w))) : null);
 }
 
@@ -751,7 +793,9 @@ function renderOpened() {
   const meta = doc.meta || {};
   const who = meta.submitted_by ? [meta.submitted_by.name, meta.submitted_by.email].filter(Boolean).join(' · ') : '';
   const when = meta.submitted_at || meta.exported_at;
-  const subtitle = [who && `From ${who}`, when && fmtTime(when), name].filter(Boolean).join(' · ');
+  const title = (tpl && docLabel(tpl, doc.answers)) || doc.template.title || 'Answers';
+  const subtitle = [tpl?.title || doc.template.title, who && `From ${who}`, when && fmtTime(when), name]
+    .filter(Boolean).join(' · ');
   const actions = [
     h('a', { class: 'btn', href: '#/' }, '← Back'),
   ];
@@ -776,11 +820,13 @@ function renderOpened() {
   else if (doc.template.version && doc.template.version !== tpl.version) banner = h('p', { class: 'note' }, 'These answers were made with an earlier version of the template. Answers are matched by question; anything that no longer matches is listed at the end.');
 
   mount(tpl
-    ? docView({ tpl, answers: doc.answers, title: doc.template.title || tpl.title, status: 'Answers file', subtitle, actions, banner })
-    : h('div', { class: 'page narrow doc' }, docHeader(doc.template.title || 'Answers', 'Answers file', subtitle, actions), banner, genericValue(doc.answers)));
+    ? docView({ tpl, answers: doc.answers, title, status: 'Answers file', subtitle, actions, banner })
+    : h('div', { class: 'page narrow doc' }, docHeader(title, 'Answers file', subtitle, actions), banner, genericValue(doc.answers)));
 }
 
 function docHeader(title, status, subtitle, actions) {
+  // So a bookmark, a tab and a printed page carry the need, not the app name.
+  document.title = [title, state.config.title].filter(Boolean).join(' · ');
   return h('header', { class: 'doc-head' },
     h('div', {}, h('p', { class: 'eyebrow' }, status), h('h1', { tabindex: '-1' }, title), subtitle ? h('p', { class: 'muted small' }, subtitle) : null),
     h('div', { class: 'doc-actions' }, actions));
