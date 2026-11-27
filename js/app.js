@@ -25,6 +25,7 @@ const state = {
   config: DEFAULT_CONFIG,
   index: [],
   templates: new Map(), // template id -> Promise<template>
+  loaded: new Map(),    // template id -> template, once resolved (for code that cannot await)
   drafts: new Map(),    // draft id -> { id, templateId, title, answers, createdAt, updatedAt, version }
   opened: null,         // { doc, tpl, name }
 };
@@ -108,7 +109,7 @@ function getTemplate(id) {
   if (!state.templates.has(id)) {
     const entry = state.index.find((t) => t.id === id) || { id, file: `templates/${id}.md` };
     const p = loadTemplate(entry);
-    p.catch(() => state.templates.delete(id));
+    p.then((t) => state.loaded.set(id, t), () => state.templates.delete(id));
     state.templates.set(id, p);
   }
   return state.templates.get(id);
@@ -313,6 +314,10 @@ async function renderHome() {
 
   const fileInput = h('input', { type: 'file', accept: '.yaml,.yml,.json', class: 'visually-hidden', id: 'open-file', onChange: (e) => openFile(e.target.files[0]) });
 
+  // A selection belongs to the visit, not to the browser: start with everything ticked.
+  selected.clear();
+  for (const d of drafts) selected.add(d.id);
+
   const cards = state.index.length
     ? state.index.map((t) => h('article', { class: 'card tpl-card' },
       h('div', { class: 'tpl-card-body' },
@@ -332,14 +337,294 @@ async function renderHome() {
       h('h1', { tabindex: '-1' }, 'Tell us what your project needs'),
       h('p', { class: 'lede' }, 'Pick a questionnaire and answer it section by section. Your answers are saved in this browser as you go, so you can stop and come back — and you can keep one going per project. When you are done, review your answers and send them to us, or export a copy as YAML or Markdown.')),
     drafts.length ? h('h2', { class: 'label-heading' }, 'In progress') : null,
+    drafts.length ? bulkBar(drafts, tpls) : null,
     drafts.length ? h('div', { class: 'q-list' }, drafts.map((d) => draftRow(d, tpls.get(d.templateId)))) : null,
     h('h2', { class: 'label-heading' }, drafts.length ? 'Capture new needs' : 'Questionnaires'),
     h('div', { class: 'tpl-grid' }, cards),
+    h('h2', { class: 'label-heading' }, 'Move captures between browsers'),
+    transferCard(drafts, tpls),
     h('div', { class: 'card open-card' },
       h('div', {},
         h('h2', {}, 'Open an answers file'),
-        h('p', { class: 'muted' }, 'View a YAML or JSON file exported from this app, then edit it or export it in another format.')),
+        h('p', { class: 'muted' }, 'View a YAML or JSON file exported from this app, then edit it or export it in another format. This one only looks — it does not add anything to the list above.')),
       h('label', { class: 'btn', for: 'open-file' }, 'Choose file…'), fileInput)));
+}
+
+// ---------------------------------------------------------------- bulk export / import
+//
+// Answers live in this browser's localStorage and nowhere else, so a browser is a
+// dead end until its captures can leave in one piece. A bundle is that one piece:
+// every selected questionnaire in a single file, importable here or in any other
+// browser running this app.
+
+/**
+ * Draft ids ticked for bulk export. Always explicit, and refilled with everything
+ * each time the start page renders — a selection is for the exchange you are doing
+ * right now, not a setting that follows you around.
+ */
+const selected = new Set();
+
+const selectedDrafts = (drafts) => drafts.filter((d) => selected.has(d.id));
+
+/** Keeps the bar's labels honest without re-rendering the list under the cursor. */
+function refreshBulkBar(drafts) {
+  const n = selectedDrafts(drafts).length;
+  const count = document.querySelector('[data-bulk-count]');
+  if (count) count.textContent = n === drafts.length ? `All ${drafts.length} selected` : `${n} of ${drafts.length} selected`;
+  document.querySelectorAll('[data-bulk-export]').forEach((b) => {
+    b.textContent = `Export ${n === drafts.length ? 'all' : n} ▾`;
+    b.classList.toggle('disabled', n === 0);
+  });
+  const del = document.querySelector('[data-bulk-delete]');
+  if (del) {
+    del.textContent = n === drafts.length ? `Delete all ${n}` : `Delete ${n}`;
+    del.disabled = n === 0;
+  }
+  const box = document.querySelector('[data-select-all]');
+  if (box) { box.checked = n > 0; box.indeterminate = n > 0 && n < drafts.length; }
+}
+
+function bulkBar(drafts, tpls) {
+  const selectAll = h('input', {
+    type: 'checkbox', checked: true, 'data-select-all': true, 'aria-label': 'Select every questionnaire',
+    onChange: (e) => {
+      selected.clear();
+      if (e.target.checked) for (const d of drafts) selected.add(d.id);
+      document.querySelectorAll('[data-pick]').forEach((b) => { b.checked = e.target.checked; });
+      refreshBulkBar(drafts);
+    },
+  });
+  return h('div', { class: 'bulk-bar' },
+    h('label', { class: 'bulk-select' }, selectAll, h('span', { 'data-bulk-count': true }, `All ${drafts.length} selected`)),
+    h('div', { class: 'bulk-actions' },
+      h('button', {
+        class: 'btn danger', type: 'button', 'data-bulk-delete': true,
+        onClick: () => openDeleteDialog(selectedDrafts(drafts), tpls),
+      }, `Delete all ${drafts.length}`),
+      exportBundleMenu(drafts, tpls)));
+}
+
+/**
+ * Deleting several at once is the one action here that destroys work, and these
+ * answers exist in this browser and nowhere else. So it names what it is about to
+ * take, and offers the backup before it does rather than after.
+ */
+function openDeleteDialog(picked, tpls) {
+  if (!picked.length) return;
+  const n = picked.length;
+  const dlg = h('dialog', { class: 'dialog wide', 'aria-labelledby': 'delete-title' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.addEventListener('cancel', () => setTimeout(() => dlg.remove(), 0));
+
+  const backup = () => {
+    const docs = picked.map((d) => {
+      const tpl = tpls.get(d.templateId);
+      return tpl ? A.buildBundleDocument(tpl, d.answers, d) : A.buildRawBundleDocument(d);
+    });
+    download(`need-capture-${n}-questionnaires-${new Date().toISOString().slice(0, 10)}.yaml`,
+      A.toBundleYAML(A.buildBundle(docs)), 'application/yaml');
+    toast('Backup downloaded — it imports back here');
+  };
+
+  dlg.append(h('div', { class: 'dialog-body' },
+    h('h2', { id: 'delete-title' }, `Delete ${n} questionnaire${n === 1 ? '' : 's'}?`),
+    h('ul', { class: 'import-list' }, picked.map((d) => {
+      const tpl = tpls.get(d.templateId);
+      const prog = tpl ? A.progress(tpl, d.answers) : null;
+      const done = prog ? prog.reduce((a, p) => a + p.done, 0) : 0;
+      return h('li', {},
+        h('span', { class: 'import-name' }, labelFor(d, tpl)),
+        done ? h('span', { class: 'badge' }, `${done} answered`) : null,
+        h('span', { class: 'import-tpl small muted' },
+          tpl?.title || state.index.find((t) => t.id === d.templateId)?.title || d.templateId,
+          d.updatedAt ? ` · last saved ${fmtTime(d.updatedAt)}` : ''));
+    })),
+    h('div', { class: 'note' }, 'Their answers are saved in this browser only. Deleting them here deletes them everywhere, and it cannot be undone.'),
+    h('div', { class: 'dialog-actions' },
+      h('button', { class: 'btn', type: 'button', onClick: close }, 'Cancel'),
+      h('button', { class: 'btn', type: 'button', onClick: backup }, 'Download a backup first'),
+      h('button', {
+        class: 'btn danger solid', type: 'button',
+        onClick: () => { close(); deleteDrafts(picked.map((d) => d.id)); },
+      }, `Delete ${n}`))));
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+function deleteDrafts(ids) {
+  for (const id of ids) deleteDraft(id);
+  selected.clear();
+  toast(`${ids.length} questionnaire${ids.length === 1 ? '' : 's'} deleted`);
+  route();
+}
+
+function exportBundleMenu(drafts, tpls) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const run = (fmt) => {
+    const picked = selectedDrafts(drafts);
+    if (!picked.length) return toast('Nothing selected to export.', 'error');
+    const docs = picked.map((d) => {
+      const tpl = tpls.get(d.templateId);
+      return tpl ? A.buildBundleDocument(tpl, d.answers, d) : A.buildRawBundleDocument(d);
+    });
+    const missing = docs.filter((x) => x.meta.template_unavailable).length;
+    if (fmt === 'yaml') download(`need-capture-${picked.length}-questionnaires-${stamp}.yaml`, A.toBundleYAML(A.buildBundle(docs)), 'application/yaml');
+    if (fmt === 'json') download(`need-capture-${picked.length}-questionnaires-${stamp}.json`, A.toBundleJSON(A.buildBundle(docs)), 'application/json');
+    if (fmt === 'questionnaire') {
+      // One YAML document per need, across every selected capture: splits into
+      // conformant single-need files for the DRS drafting agent.
+      const out = [];
+      for (const d of picked) {
+        const tpl = tpls.get(d.templateId);
+        if (!tpl) continue; // the hand-off format needs the template's question IDs
+        const n = A.needCount(tpl, d.answers);
+        if (n) for (let i = 0; i < n; i++) out.push(A.toQuestionnaireYAML(tpl, d.answers, i));
+        else out.push(A.toQuestionnaireYAML(tpl, d.answers, null));
+      }
+      if (!out.length) return toast('None of the selected questionnaires could be read with their template.', 'error');
+      download(`need-capture-${out.length}-needs-${stamp}-questionnaire.yaml`, out.join('---\n'), 'application/yaml');
+      return toast(`${out.length} need${out.length === 1 ? '' : 's'} exported`);
+    }
+    toast(missing ? `${picked.length} exported · ${missing} without its template` : `${picked.length} questionnaire${picked.length === 1 ? '' : 's'} exported`);
+  };
+  const close = (e) => e.target.closest('details')?.removeAttribute('open');
+  return h('details', { class: 'menu' },
+    h('summary', { class: 'btn', 'data-bulk-export': true }, 'Export all ▾'),
+    h('div', { class: 'menu-list' },
+      [
+        ['yaml', 'Bundle (.yaml) — reopens in this app'],
+        ['json', 'Bundle (.json)'],
+        ['questionnaire', 'questionnaire.yaml — every need, for the DRS agent'],
+      ].map(([k, label]) => h('button', { type: 'button', class: 'menu-item', onClick: (e) => { run(k); close(e); } }, label))));
+}
+
+function transferCard(drafts, tpls) {
+  const input = h('input', {
+    type: 'file', accept: '.yaml,.yml,.json', multiple: true, class: 'visually-hidden', id: 'import-file',
+    onChange: (e) => { const files = [...e.target.files]; e.target.value = ''; importFiles(files); },
+  });
+  return h('div', { class: 'card open-card' },
+    h('div', {},
+      h('h2', {}, 'Export and import in bulk'),
+      h('p', { class: 'muted' }, drafts.length
+        ? `Your answers are saved in this browser and nowhere else. Export the ${drafts.length === 1 ? 'questionnaire' : 'ticked questionnaires'} as one file to move ${drafts.length === 1 ? 'it' : 'them'} to another browser, hand ${drafts.length === 1 ? 'it' : 'them'} to a colleague, or keep a backup. Importing adds questionnaires to the list above, ready to carry on answering.`
+        : 'Nothing is saved in this browser yet. If you have a bundle exported from this app — or single answers files — import them here and they will appear above, ready to carry on answering.')),
+    h('div', { class: 'bulk-actions' },
+      drafts.length ? exportBundleMenu(drafts, tpls) : null,
+      h('label', { class: 'btn primary', for: 'import-file' }, 'Import…'), input));
+}
+
+/** Read every chosen file, then show what would happen before writing anything. */
+async function importFiles(files) {
+  if (!files?.length) return;
+  const incoming = [];
+  const problems = [];
+  for (const f of files) {
+    try {
+      for (const doc of A.parseBundle(await f.text())) incoming.push(A.draftFromDocument(doc));
+    } catch (e) { problems.push(`${f.name}: ${e.message}`); }
+  }
+  if (!incoming.length) {
+    return toast(problems[0] || 'Nothing to import from those files.', 'error');
+  }
+  // Titles come from the template where the file did not carry one.
+  await Promise.all([...new Set(incoming.map((d) => d.templateId).filter(Boolean))]
+    .map((id) => getTemplate(id).catch(() => null)));
+  openImportDialog(incoming, problems);
+}
+
+function openImportDialog(incoming, problems) {
+  const existing = new Set(listDrafts().map((d) => d.id));
+  const clashes = incoming.filter((d) => d.id && existing.has(d.id)).length;
+  let mode = 'replace';
+
+  const dlg = h('dialog', { class: 'dialog wide', 'aria-labelledby': 'import-title' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.addEventListener('cancel', () => setTimeout(() => dlg.remove(), 0));
+
+  const nameOf = (d) => {
+    if (d.title?.trim()) return d.title.trim();
+    const tpl = tplIfLoaded(d.templateId);
+    return (tpl && docLabel(tpl, d.answers).trim()) || 'Untitled';
+  };
+  const tplNameOf = (d) => tplIfLoaded(d.templateId)?.title
+    || state.index.find((t) => t.id === d.templateId)?.title
+    || d.templateId || 'unknown template';
+
+  const rows = incoming.map((d) => {
+    const clash = d.id && existing.has(d.id);
+    const usable = !!d.templateId;
+    return h('li', { class: usable ? '' : 'muted' },
+      h('span', { class: 'import-name' }, nameOf(d)),
+      clash ? h('span', { class: 'badge' }, 'already here') : null,
+      !usable ? h('span', { class: 'small danger-text' }, 'names no template, cannot be imported') : null,
+      h('span', { class: 'import-tpl small muted' }, tplNameOf(d)));
+  });
+
+  const modeChoice = h('fieldset', { class: 'import-modes' },
+    h('legend', {}, `${clashes} of these ${clashes === 1 ? 'is' : 'are'} already saved in this browser`),
+    [
+      ['replace', 'Replace the copy here', 'The version in the file wins. Use this when the file is newer.'],
+      ['keep', 'Keep both', 'Imports as separate copies, so nothing here is overwritten.'],
+      ['skip', 'Leave them alone', 'Only the ones that are new to this browser come in.'],
+    ].map(([val, label, hint]) => h('label', { class: 'import-mode' },
+      h('input', { type: 'radio', name: 'import-mode', value: val, checked: val === 'replace', onChange: () => { mode = val; } }),
+      h('span', {}, h('strong', {}, label), h('span', { class: 'small muted' }, hint)))));
+
+  const n = incoming.length;
+  dlg.append(h('div', { class: 'dialog-body' },
+    h('h2', { id: 'import-title' }, `Import ${n} questionnaire${n === 1 ? '' : 's'}?`),
+    h('p', { class: 'small muted' }, 'They will be saved in this browser and appear under “In progress”.'),
+    h('ul', { class: 'import-list' }, rows),
+    problems.length ? h('div', { class: 'note' }, h('strong', {}, `${problems.length} file${problems.length === 1 ? '' : 's'} could not be read: `), problems.join(' · ')) : null,
+    clashes ? modeChoice : null,
+    h('div', { class: 'dialog-actions' },
+      h('button', { class: 'btn', type: 'button', onClick: close }, 'Cancel'),
+      h('button', {
+        class: 'btn primary', type: 'button',
+        onClick: () => { close(); applyImport(incoming, mode); },
+      }, 'Import'))));
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+/** The template only if it is already parsed — the dialog renders without awaiting. */
+const tplIfLoaded = (id) => (id ? state.loaded.get(id) || null : null);
+
+function applyImport(incoming, mode) {
+  const existing = new Set(listDrafts().map((d) => d.id));
+  const plan = A.planImport(incoming, existing, mode);
+  let added = 0, replaced = 0, skipped = 0, refused = 0;
+
+  for (const p of plan) {
+    if (p.action === 'invalid') { refused++; continue; }
+    if (p.action === 'skip') { skipped++; continue; }
+    const d = p.draft;
+    // Keep the id it arrived with where that is free; a clash under "keep both"
+    // gets a fresh one so the copy already here is left untouched.
+    const id = p.action === 'replace' || (d.id && !existing.has(d.id)) ? d.id : newId(d.templateId);
+    const now = new Date().toISOString();
+    const rec = {
+      id,
+      templateId: d.templateId,
+      title: d.title || '',
+      answers: d.answers || {},
+      createdAt: d.createdAt || now,
+      updatedAt: d.updatedAt || now,
+      version: d.version,
+    };
+    if (p.action === 'replace') replaced++; else added++;
+    existing.add(id);
+    state.drafts.set(id, rec);
+    if (!writeDraft(rec)) {
+      toast('This browser would not store them — check that site data is allowed.', 'error');
+      return route();
+    }
+  }
+  const said = [added && `${added} imported`, replaced && `${replaced} replaced`, skipped && `${skipped} skipped`,
+    refused && `${refused} could not be read`].filter(Boolean).join(' · ');
+  toast(said || 'Nothing imported', refused > 0 && added + replaced === 0 ? 'error' : 'info');
+  route();
 }
 
 function draftRow(d, tpl) {
@@ -350,7 +635,14 @@ function draftRow(d, tpl) {
   const pct = total ? Math.round((100 * done) / total) : 0;
   const tplTitle = tpl?.title || state.index.find((t) => t.id === d.templateId)?.title || d.templateId;
 
+  const pick = h('input', {
+    type: 'checkbox', checked: true, 'data-pick': d.id, class: 'q-pick',
+    'aria-label': `Include “${labelFor(d, tpl)}” in a bulk export`,
+    onChange: (e) => { e.target.checked ? selected.add(d.id) : selected.delete(d.id); refreshBulkBar(listDrafts()); },
+  });
+
   return h('article', { class: 'card q-item' },
+    pick,
     h('div', { class: 'q-main' },
       h('h3', { class: 'q-title' }, labelFor(d, tpl)),
       h('p', { class: 'q-meta' },

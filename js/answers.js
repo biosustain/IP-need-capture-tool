@@ -6,7 +6,7 @@
 //   grid      -> [ { columnKey: value, ... }, ... ]
 //   checklist -> { itemKey: true|false }
 
-import { dump, load } from '../vendor/js-yaml.mjs';
+import { dump, load, loadAll } from '../vendor/js-yaml.mjs';
 import { blockToMarkdown, tableToMarkdown } from './markdown.js';
 import { initialRows, rowSpecs } from './template.js';
 
@@ -371,6 +371,141 @@ export function toMarkdown(tpl, answers, meta = {}) {
     }
   }
   return out.join('\n\n') + '\n';
+}
+
+// ---------- bundles (many questionnaires in one file) ----------
+//
+// A bundle is one file holding several questionnaires, so a whole browser's worth of
+// captures can be moved in one step — to a colleague, to another machine, or into a
+// backup. Each entry under `documents:` is exactly what a single export writes, with
+// the draft's own identity kept under `meta.draft` so a restore comes back named and
+// dated as it left. That makes a bundle splittable: lift one entry out and it is a
+// valid answers file on its own.
+
+export const BUNDLE_KIND = 'need-capture-bundle';
+
+/** One questionnaire inside a bundle: a normal document, plus who it was. */
+export function buildBundleDocument(tpl, answers, draft = {}) {
+  const doc = buildDocument(tpl, answers, {});
+  doc.meta.draft = draftMeta(draft);
+  return doc;
+}
+
+/**
+ * The same, for a draft whose template could not be loaded. The answers are written
+ * through untouched rather than normalised — a template that is missing today may be
+ * back tomorrow, and a bulk export must never be the step that drops someone's work.
+ */
+export function buildRawBundleDocument(draft) {
+  return {
+    template: { id: draft.templateId || '', version: draft.version || null },
+    meta: { app: APP_ID, format_version: FORMAT_VERSION, exported_at: new Date().toISOString(), template_unavailable: true, draft: draftMeta(draft) },
+    answers: clone(draft.answers) || {},
+  };
+}
+
+function draftMeta(draft) {
+  return {
+    id: draft.id || null,
+    title: draft.title || '',
+    created_at: draft.createdAt || null,
+    updated_at: draft.updatedAt || null,
+  };
+}
+
+export function buildBundle(documents) {
+  return {
+    meta: {
+      app: APP_ID,
+      format_version: FORMAT_VERSION,
+      kind: BUNDLE_KIND,
+      exported_at: new Date().toISOString(),
+      count: documents.length,
+    },
+    documents,
+  };
+}
+
+export function toBundleYAML(bundle) {
+  const n = bundle.documents?.length || 0;
+  const head = `# ${n} questionnaire${n === 1 ? '' : 's'} exported from the Informatics Platform need capture app.\n`
+    + '# Import it back on the start page to restore them, or lift one entry out as its own answers file.\n';
+  return head + dump(bundle, { lineWidth: -1, noRefs: true });
+}
+
+export const toBundleJSON = (bundle) => JSON.stringify(bundle, null, 2) + '\n';
+
+/**
+ * Every questionnaire in a file, whatever shape it arrives in: a bundle, a single
+ * answers file, or several YAML documents concatenated with `---`. Being forgiving
+ * here is the point — people will drop in whatever the app gave them last.
+ */
+export function parseBundle(text) {
+  let docs;
+  try { docs = loadAll(text); } catch (e) { throw new Error(`Not a valid YAML/JSON file: ${e.message.split('\n')[0]}`); }
+  const out = [];
+  let handoff = 0;
+  const take = (d) => {
+    if (!d || typeof d !== 'object' || !d.answers || typeof d.answers !== 'object') return;
+    if (isHandoff(d)) { handoff++; return; }
+    out.push(shape(d));
+  };
+  for (const d of docs) {
+    if (!d || typeof d !== 'object') continue;
+    if (Array.isArray(d.documents)) d.documents.forEach(take); else take(d);
+  }
+  if (!out.length && handoff) {
+    throw new Error('This is a questionnaire.yaml written for the DRS agent — a one-way hand-off keyed by question ID. Import the YAML this app exports instead.');
+  }
+  if (!out.length) throw new Error('No answers found in this file. Export one from this app first.');
+  return out;
+}
+
+/**
+ * The DRS hand-off format also has an `answers:` key, so it would otherwise be read
+ * as a questionnaire and imported as an empty one. It is recognisable: no template,
+ * and every answer is a `{ question, answer }` pair rather than a section of them.
+ */
+function isHandoff(d) {
+  if (d.template?.id) return false;
+  const vals = Object.values(d.answers);
+  return vals.length > 0 && vals.every((v) => v && typeof v === 'object' && !Array.isArray(v) && 'question' in v && 'answer' in v);
+}
+
+function shape(doc) {
+  doc.template ||= {};
+  doc.meta ||= {};
+  return doc;
+}
+
+/** A bundle entry as a draft record. `id` is what it was; the caller decides if it keeps it. */
+export function draftFromDocument(doc) {
+  const d = (doc.meta && doc.meta.draft) || {};
+  return {
+    id: typeof d.id === 'string' && d.id ? d.id : null,
+    templateId: doc.template?.id || '',
+    title: typeof d.title === 'string' ? d.title : '',
+    answers: doc.answers && typeof doc.answers === 'object' ? doc.answers : {},
+    createdAt: d.created_at || doc.meta?.exported_at || null,
+    updatedAt: d.updated_at || doc.meta?.exported_at || null,
+    version: doc.template?.version || undefined,
+  };
+}
+
+/**
+ * What an import would do, decided before anything is written. `mode` settles the
+ * drafts this browser already holds under the same id: 'replace' overwrites them,
+ * 'keep' brings them in alongside as separate copies, 'skip' leaves them alone.
+ */
+export function planImport(incoming, existingIds, mode = 'replace') {
+  const have = existingIds instanceof Set ? existingIds : new Set(existingIds || []);
+  return incoming.map((draft) => {
+    if (!draft.templateId) return { draft, action: 'invalid', reason: 'names no template, so there is nothing to open it with' };
+    if (!draft.id || !have.has(draft.id)) return { draft, action: 'add', clash: false };
+    if (mode === 'skip') return { draft, action: 'skip', clash: true };
+    if (mode === 'keep') return { draft, action: 'add', clash: true };
+    return { draft, action: 'replace', clash: true };
+  });
 }
 
 export { rowSpecs };

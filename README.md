@@ -16,6 +16,8 @@ The app is the first step of a two-stage workflow — see
   project. Each is listed under **In progress** with its own progress and last-saved time.
 - **Send your answers** – downloads the YAML and lets the client pick which team member to email
   it to.
+- **Export, import and delete in bulk** – tick the questionnaires in this browser and move them all
+  as one bundle file, bring them back the same way, or clear them out together.
 
 Everything runs in the browser. There is no server, no account and no network call beyond loading
 the site itself: answers never leave the client's machine until they choose to send the file.
@@ -40,6 +42,7 @@ config.json                  site settings (title, organisation, contact email)
 templates/                   needs statement (served) + specification shape + generated index.json
 scripts/build-template-index.mjs   regenerates templates/index.json
 scripts/validate-need-yaml.mjs     checks a need file before it is opened in the app
+scripts/test-bundle.mjs            checks the bulk export/import bundle format
 .claude/skills/need-capture/       agent skill: free text -> one need file per need
 .github/workflows/pages.yml  deploys the site to GitHub Pages
 LICENSE                      MIT
@@ -55,6 +58,10 @@ python3 -m http.server 8000             # any static server works
 
 Opening `index.html` straight from disk does not work, because browsers block `fetch` and modules
 on `file://`.
+
+```bash
+node scripts/test-bundle.mjs            # bundle format: round trip and import planning
+```
 
 ## Publish on GitHub Pages
 
@@ -99,8 +106,50 @@ questionnaire rather than overwriting anything.
 
 Drafts live in the browser's `localStorage` under `ipreq.q.<id>`, one entry each. That means they
 are **per browser and per device**: they are not shared between people, do not follow you to another
-machine, and are lost if the browser's site data is cleared. Export a copy to keep anything that
-matters.
+machine, and are lost if the browser's site data is cleared. **Export and import in bulk** is how
+they get out, and back.
+
+## Export, import and delete in bulk
+
+The start page acts on whole sets of captures in one step. Every questionnaire under *In progress*
+carries a tick box, and the bar above the list selects or deselects them together; **Export** and
+**Delete** both act on whatever is ticked.
+
+**Exporting.** **Export** writes the ticked ones:
+
+| | What it writes | Read back by |
+| --- | --- | --- |
+| Bundle (`.yaml`) | every ticked questionnaire in one file | this app |
+| Bundle (`.json`) | the same, as JSON | this app |
+| `questionnaire.yaml` | one YAML document per need, `---` separated, across every ticked capture | the DRS drafting agent (one way — it does not import back) |
+
+A bundle is a list of ordinary answers documents under `documents:`, each with the draft's own
+name, id and timestamps under `meta.draft`. Lift one entry out and it is a valid single answers
+file; a draft whose template will not load is still written out, with its answers untouched and
+`meta.template_unavailable: true`, so a bulk export never silently drops someone's work.
+
+**Importing.** **Import…** takes several files at once and reads bundles, single answers files, and
+several answers documents concatenated with `---`. Nothing is written until a dialog has shown what
+is in the files. Where a questionnaire is already saved in this browser — the same `meta.draft.id`,
+so a backup restored onto its own machine — that dialog asks what to do:
+
+- **Replace the copy here** (default) — the version in the file wins.
+- **Keep both** — the incoming copy gets a fresh id, and nothing here is overwritten.
+- **Leave them alone** — only the ones new to this browser come in.
+
+Anything that names no template is reported and skipped rather than guessed at. A
+`questionnaire.yaml` written for the DRS agent cannot be imported: it is a one-way hand-off format
+keyed by question ID, not the app's round-trippable one.
+
+**Deleting.** **Delete** clears the ticked questionnaires out of this browser together, which is
+how a shared or borrowed machine is left clean after a capture session. Because these answers exist
+in this browser and nowhere else, it confirms first: the dialog names every questionnaire it is
+about to take, with how much of each is answered and when it was last saved, and offers **Download
+a backup first** — the same bundle file, of exactly those captures, which imports straight back.
+Deleting one at a time is still in each row's `⋯` menu.
+
+This is also the backup story. Nothing is uploaded anywhere — the file lands in the browser's
+downloads folder, and where it goes next is the client's choice.
 
 ## One capture, several needs
 
@@ -381,6 +430,28 @@ Two shapes this example does not show, because the short form has no question of
 `{ choice: …, note: … }`.
 
 Unanswered questions are exported as empty strings, so open items stay visible.
+
+A bulk export nests these same documents in a list, and adds who each one was:
+
+```yaml
+meta:
+  app: ip-requirements-app
+  format_version: 1
+  kind: need-capture-bundle
+  exported_at: '2026-11-27T09:14:51.002Z'
+  count: 2
+documents:
+  - template: { id: need-capture-short, … }
+    meta:
+      exported_at: '2026-11-27T09:14:51.002Z'
+      draft:                                       # restores the draft as it left
+        id: need-capture-short-mh2k8f0a1b
+        title: ''                                  # empty: the app names it from the answers
+        created_at: '2026-11-20T09:00:00.000Z'
+        updated_at: '2026-11-25T14:30:00.000Z'
+    answers: { … }
+  - …
+```
 
 ## How this app was built
 

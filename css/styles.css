@@ -17,6 +17,7 @@
   --warn-soft: #fbf3df;
   --warn-line: #e8d6a6;
   --error: #b3261e;
+  --error-ink: #ffffff;        /* text on a solid --error button */
   --radius: 10px;
   --shadow: 0 1px 2px rgba(20, 20, 30, .05), 0 2px 8px rgba(20, 20, 30, .04);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -27,14 +28,14 @@
   :root:not([data-theme="light"]) {
     --bg: #16171a; --surface: #1f2024; --surface-2: #26282d; --ink: #ecebe8; --ink-2: #c4c3bf; --muted: #9a9ca3;
     --line: #33353b; --line-strong: #474a52; --accent: #e0574f; --accent-ink: #1b0e0d; --accent-soft: #3a2422;
-    --mark-plate: #f2f1ee; --focus: #8fb0ff; --ok: #6fcf97; --ok-soft: #1f3328; --warn-soft: #332c1b; --warn-line: #5a4b25; --error: #ff8a80;
+    --mark-plate: #f2f1ee; --focus: #8fb0ff; --ok: #6fcf97; --ok-soft: #1f3328; --warn-soft: #332c1b; --warn-line: #5a4b25; --error: #ff8a80; --error-ink: #2a0d0b;
     --shadow: none; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #16171a; --surface: #1f2024; --surface-2: #26282d; --ink: #ecebe8; --ink-2: #c4c3bf; --muted: #9a9ca3;
   --line: #33353b; --line-strong: #474a52; --accent: #e0574f; --accent-ink: #1b0e0d; --accent-soft: #3a2422;
-  --mark-plate: #f2f1ee; --focus: #8fb0ff; --ok: #6fcf97; --ok-soft: #1f3328; --warn-soft: #332c1b; --warn-line: #5a4b25; --error: #ff8a80;
+  --mark-plate: #f2f1ee; --focus: #8fb0ff; --ok: #6fcf97; --ok-soft: #1f3328; --warn-soft: #332c1b; --warn-line: #5a4b25; --error: #ff8a80; --error-ink: #2a0d0b;
   --shadow: none; color-scheme: dark;
 }
 
@@ -109,6 +110,30 @@ h1:focus { outline: none; }
 .open-card { margin-top: 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .open-card h2 { font-size: 1.02rem; margin-bottom: 4px; }
 .open-card p { margin: 0; }
+
+/* bulk export / import */
+.q-pick { flex: none; width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 2px 20px 10px 2px; }
+.bulk-select { display: flex; align-items: center; gap: 9px; font-size: .88rem; color: var(--muted); cursor: pointer; }
+.bulk-select input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.bulk-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn.disabled { opacity: .5; }
+.btn.danger { color: var(--error); border-color: color-mix(in srgb, var(--error) 35%, var(--line-strong)); }
+.btn.danger:hover:not([disabled]) { background: color-mix(in srgb, var(--error) 10%, var(--surface)); }
+.btn.danger.solid { background: var(--error); border-color: var(--error); color: var(--error-ink); }
+.btn.danger.solid:hover { filter: brightness(1.08); }
+.btn.danger[disabled] { cursor: not-allowed; opacity: .45; }
+.import-list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.import-list li { padding: 7px 12px; font-size: .9rem; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.import-list li + li { border-top: 1px solid var(--line); }
+.import-name { font-weight: 550; overflow-wrap: anywhere; }
+.import-tpl { flex-basis: 100%; }
+.danger-text { color: var(--error); }
+.import-modes { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px 12px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.import-modes legend { font-size: .84rem; color: var(--muted); padding: 0 4px; }
+.import-mode { display: flex; align-items: flex-start; gap: 9px; font-size: .9rem; cursor: pointer; }
+.import-mode input { margin-top: 3px; accent-color: var(--accent); flex: none; }
+.import-mode span { display: flex; flex-direction: column; gap: 1px; }
 
 /* toolbar */
 .toolbar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
@@ -225,6 +250,7 @@ ul.checks li.on { color: var(--ink); }
 
 /* dialog */
 .dialog { border: 0; border-radius: 14px; padding: 0; width: min(480px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, .25); }
+.dialog.wide { width: min(620px, calc(100vw - 32px)); }
 .dialog::backdrop { background: rgba(10, 10, 20, .45); }
 .dialog-body { padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
 .dialog-body h2 { font-size: 1.25rem; }
